@@ -1,6 +1,8 @@
 // Package session implements SAM v3.0-3.3 session management.
 package session
 
+import "time"
+
 // SessionConfig holds configuration options for SAM sessions.
 // These options are set during SESSION CREATE and affect tunnel behavior.
 // See SAMv3.md section on SESSION CREATE for full option details.
@@ -142,6 +144,8 @@ type ConnectOptions struct {
 	ToPort int
 	// Silent suppresses the response confirmation if true.
 	Silent bool
+	// Timeout specifies the connection timeout duration.
+	Timeout time.Duration
 }
 
 // AcceptOptions holds options for STREAM ACCEPT operations.
@@ -149,6 +153,8 @@ type ConnectOptions struct {
 type AcceptOptions struct {
 	// Silent suppresses the response confirmation if true.
 	Silent bool
+	// Timeout specifies the accept timeout duration.
+	Timeout time.Duration
 }
 
 // ForwardOptions holds options for STREAM FORWARD operations.

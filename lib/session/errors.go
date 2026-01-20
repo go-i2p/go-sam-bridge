@@ -28,4 +28,7 @@ var (
 
 	// ErrNotPrimarySession indicates the operation requires a PRIMARY session.
 	ErrNotPrimarySession = errors.New("operation requires PRIMARY session")
+
+	// ErrSessionNotActive indicates the session is not in active state.
+	ErrSessionNotActive = errors.New("session not active")
 )
