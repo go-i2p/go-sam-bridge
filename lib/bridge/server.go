@@ -19,11 +19,12 @@ import (
 // Server is the SAM bridge server that accepts client connections
 // and processes SAM protocol commands.
 type Server struct {
-	config   *Config
-	listener net.Listener
-	router   *handler.Router
-	registry session.Registry
-	parser   *protocol.Parser
+	config    *Config
+	listener  net.Listener
+	router    *handler.Router
+	registry  session.Registry
+	parser    *protocol.Parser
+	authStore *AuthStore
 
 	mu          sync.Mutex
 	connections map[*Connection]struct{}
@@ -39,11 +40,15 @@ func NewServer(config *Config, registry session.Registry) (*Server, error) {
 		return nil, err
 	}
 
+	// Initialize AuthStore from config
+	authStore := NewAuthStoreFromConfig(config.Auth)
+
 	return &Server{
 		config:      config,
 		registry:    registry,
 		router:      handler.NewRouter(),
 		parser:      protocol.NewParser(),
+		authStore:   authStore,
 		connections: make(map[*Connection]struct{}),
 		done:        make(chan struct{}),
 	}, nil
@@ -62,6 +67,12 @@ func (s *Server) Registry() session.Registry {
 // Config returns the server configuration.
 func (s *Server) Config() *Config {
 	return s.config
+}
+
+// AuthStore returns the authentication store for handler registration.
+// Implements handler.AuthManager interface for AUTH commands.
+func (s *Server) AuthStore() *AuthStore {
+	return s.authStore
 }
 
 // ListenAndServe starts listening on the configured address and serves clients.
@@ -249,8 +260,8 @@ func (s *Server) dispatchCommand(
 			WithMessage("handshake not complete"), nil
 	}
 
-	// Check authentication if required
-	if s.config.Auth.Required && !ctx.Authenticated && !isAuthCommand(cmd) {
+	// Check authentication if required (use AuthStore for runtime state)
+	if s.authStore.IsAuthEnabled() && !ctx.Authenticated && !isAuthCommand(cmd) {
 		return protocol.NewResponse(cmd.Verb).
 			WithResult("I2P_ERROR").
 			WithMessage("authentication required"), nil
@@ -340,8 +351,11 @@ func isHandshakeCommand(cmd *protocol.Command) bool {
 }
 
 // isAuthCommand returns true if the command is related to authentication.
+// Per SAM 3.2, HELLO (with USER/PASSWORD) and AUTH commands can be used
+// before authentication is established.
 func isAuthCommand(cmd *protocol.Command) bool {
-	return strings.EqualFold(cmd.Verb, "HELLO")
+	verb := strings.ToUpper(cmd.Verb)
+	return verb == "HELLO" || verb == "AUTH"
 }
 
 // sendParseError sends a protocol error response for parse failures.
