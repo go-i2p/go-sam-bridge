@@ -170,22 +170,35 @@ func (h *SessionHandler) createTransientDest(cmd *protocol.Command) (*session.De
 }
 
 // parseExistingDest parses an existing private key destination.
+// Per SAM 3.3, this also detects and parses offline signatures.
+// If the signing private key is all zeros, the offline signature section follows.
 func (h *SessionHandler) parseExistingDest(privKeyBase64 string) (*session.Destination, string, error) {
-	dest, privKey, err := h.destManager.Parse(privKeyBase64)
+	result, err := h.destManager.ParseWithOffline(privKeyBase64)
 	if err != nil {
 		return nil, "", err
 	}
 
 	// Get public key for hash
-	pubKeyBase64, err := h.destManager.EncodePublic(dest)
+	pubKeyBase64, err := h.destManager.EncodePublic(result.Destination)
 	if err != nil {
 		return nil, "", err
 	}
 
 	sessionDest := &session.Destination{
 		PublicKey:     []byte(pubKeyBase64),
-		PrivateKey:    privKey,
-		SignatureType: 7, // TODO: extract from destination
+		PrivateKey:    result.PrivateKey,
+		SignatureType: result.SignatureType,
+	}
+
+	// Copy offline signature if present
+	if result.OfflineSignature != nil {
+		sessionDest.OfflineSignature = &session.ParsedOfflineSignature{
+			Expires:             result.OfflineSignature.Expires.Unix(),
+			TransientSigType:    result.OfflineSignature.TransientSigType,
+			TransientPublicKey:  result.OfflineSignature.TransientPublicKey,
+			Signature:           result.OfflineSignature.Signature,
+			TransientPrivateKey: result.OfflineSignature.TransientPrivateKey,
+		}
 	}
 
 	return sessionDest, privKeyBase64, nil

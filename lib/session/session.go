@@ -82,6 +82,31 @@ type Destination struct {
 	PrivateKey []byte
 	// SignatureType is the signature algorithm (e.g., 7 for Ed25519).
 	SignatureType int
+	// OfflineSignature contains parsed offline signature data, if present.
+	// Offline signatures allow using a transient key while keeping the
+	// long-term identity key offline for security. Per SAMv3.md, offline
+	// signatures are only supported for STREAM and RAW sessions.
+	OfflineSignature *ParsedOfflineSignature
+}
+
+// ParsedOfflineSignature mirrors destination.ParsedOfflineSignature for session package use.
+// This avoids circular imports between session and destination packages.
+type ParsedOfflineSignature struct {
+	// Expires is the Unix timestamp when the offline signature expires.
+	Expires int64
+	// TransientSigType is the signature type of the transient key.
+	TransientSigType int
+	// TransientPublicKey is the transient signing public key.
+	TransientPublicKey []byte
+	// Signature is the signature from the long-term (offline) key.
+	Signature []byte
+	// TransientPrivateKey is the transient signing private key.
+	TransientPrivateKey []byte
+}
+
+// HasOfflineSignature returns true if the destination has an offline signature.
+func (d *Destination) HasOfflineSignature() bool {
+	return d != nil && d.OfflineSignature != nil
 }
 
 // Hash returns a unique identifier for the destination (typically a hash of the public key).

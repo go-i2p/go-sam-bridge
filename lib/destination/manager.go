@@ -24,6 +24,10 @@ type Manager interface {
 	// Validates format per PrivateKeyFile specification.
 	Parse(privkeyBase64 string) (*commondest.Destination, []byte, error)
 
+	// ParseWithOffline decodes a Base64 private key string and also detects/parses
+	// offline signatures per SAM 3.3 specification.
+	ParseWithOffline(privkeyBase64 string) (*ParseResult, error)
+
 	// ParsePublic decodes a Base64 public destination string.
 	ParsePublic(destBase64 string) (*commondest.Destination, error)
 
@@ -48,6 +52,20 @@ func NewManager() *ManagerImpl {
 	return &ManagerImpl{
 		cache: make(map[string]*commondest.Destination),
 	}
+}
+
+// ParseResult contains the result of parsing a private key, including
+// offline signature data if present.
+type ParseResult struct {
+	// Destination is the parsed I2P destination.
+	Destination *commondest.Destination
+	// PrivateKey contains the private key bytes.
+	PrivateKey []byte
+	// SignatureType is the destination's signature type.
+	SignatureType int
+	// OfflineSignature contains the parsed offline signature, if present.
+	// Nil if the destination does not use offline signatures.
+	OfflineSignature *ParsedOfflineSignature
 }
 
 // Manager errors.
@@ -126,6 +144,92 @@ func (m *ManagerImpl) Parse(privkeyBase64 string) (*commondest.Destination, []by
 
 	// Remaining bytes are the private keys
 	return &dest, remainder, nil
+}
+
+// ParseWithOffline decodes a Base64 private key string and also detects/parses
+// offline signatures per SAM 3.3 specification.
+//
+// The private key format is:
+//   - Destination (public key, signing public key, certificate)
+//   - Private encryption key (256 bytes for ElGamal, 32 for X25519)
+//   - Signing private key (length per sig type, all zeros if offline)
+//   - Offline signature section (if signing key is all zeros)
+//
+// Per SAMv3.md, if the signing private key is all zeros, an offline signature
+// section follows with: expires (4B) + transient sig type (2B) + transient pub key
+// + signature + transient priv key.
+func (m *ManagerImpl) ParseWithOffline(privkeyBase64 string) (*ParseResult, error) {
+	if privkeyBase64 == "" {
+		return nil, ErrInvalidPrivateKey
+	}
+
+	data, err := Base64Decode(privkeyBase64)
+	if err != nil {
+		return nil, util.NewSessionError("", "parse private key", err)
+	}
+
+	// Minimum destination size
+	if len(data) < keys_and_cert.KEYS_AND_CERT_MIN_SIZE {
+		return nil, ErrInvalidPrivateKey
+	}
+
+	// Parse the destination using go-i2p/common
+	dest, remainder, err := commondest.ReadDestination(data)
+	if err != nil {
+		return nil, util.NewSessionError("", "parse destination", err)
+	}
+
+	// Get signature type from the destination's key certificate
+	sigType := SigTypeEd25519 // Default
+	if dest.KeysAndCert != nil && dest.KeysAndCert.KeyCertificate != nil {
+		sigType = dest.KeysAndCert.KeyCertificate.SigningPublicKeyType()
+	}
+
+	result := &ParseResult{
+		Destination:   &dest,
+		PrivateKey:    remainder,
+		SignatureType: sigType,
+	}
+
+	// Calculate expected key sizes to detect offline signature
+	// Encryption private key size (256 for ElGamal, 32 for X25519)
+	encPrivKeySize := 256 // ElGamal default
+	if dest.KeysAndCert != nil && dest.KeysAndCert.KeyCertificate != nil {
+		cryptoType := dest.KeysAndCert.KeyCertificate.PublicKeyType()
+		if cryptoType == EncTypeECIES_X25519 {
+			encPrivKeySize = 32
+		}
+	}
+
+	// Signing private key size
+	sigPrivKeySize, err := getSigningPrivateKeyLength(sigType)
+	if err != nil {
+		// Unknown signature type, return without offline signature check
+		return result, nil
+	}
+
+	signingKeyOffset := encPrivKeySize
+	minPrivKeySize := encPrivKeySize + sigPrivKeySize
+
+	// Check if we have enough data to examine signing private key
+	if len(remainder) < minPrivKeySize {
+		return result, nil
+	}
+
+	// Check if signing private key is all zeros (indicates offline signature)
+	if HasOfflineSignature(remainder, signingKeyOffset, sigPrivKeySize) {
+		// Parse offline signature from data after signing private key
+		offlineOffset := signingKeyOffset + sigPrivKeySize
+		if len(remainder) > offlineOffset {
+			offlineSig, offlineErr := ParseOfflineSignature(remainder[offlineOffset:], sigType)
+			if offlineErr == nil {
+				result.OfflineSignature = offlineSig
+			}
+			// If parsing fails, we still return the result without offline signature
+		}
+	}
+
+	return result, nil
 }
 
 // ParsePublic decodes a Base64 public destination string.

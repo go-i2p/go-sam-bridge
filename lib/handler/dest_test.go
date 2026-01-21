@@ -6,18 +6,21 @@ import (
 	"testing"
 
 	commondest "github.com/go-i2p/common/destination"
+	"github.com/go-i2p/go-sam-bridge/lib/destination"
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 )
 
 // mockManager is a test implementation of destination.Manager
 type mockManager struct {
-	generateErr  error
-	encodeErr    error
-	encodePubErr error
-	dest         *commondest.Destination
-	privateKey   []byte
-	pubEncoded   string
-	privEncoded  string
+	generateErr     error
+	encodeErr       error
+	encodePubErr    error
+	parseWithOffErr error
+	dest            *commondest.Destination
+	privateKey      []byte
+	pubEncoded      string
+	privEncoded     string
+	parseResult     *destination.ParseResult
 }
 
 func (m *mockManager) Generate(signatureType int) (*commondest.Destination, []byte, error) {
@@ -29,6 +32,20 @@ func (m *mockManager) Generate(signatureType int) (*commondest.Destination, []by
 
 func (m *mockManager) Parse(privkeyBase64 string) (*commondest.Destination, []byte, error) {
 	return nil, nil, errors.New("not implemented")
+}
+
+func (m *mockManager) ParseWithOffline(privkeyBase64 string) (*destination.ParseResult, error) {
+	if m.parseWithOffErr != nil {
+		return nil, m.parseWithOffErr
+	}
+	if m.parseResult != nil {
+		return m.parseResult, nil
+	}
+	return &destination.ParseResult{
+		Destination:   m.dest,
+		PrivateKey:    m.privateKey,
+		SignatureType: 7,
+	}, nil
 }
 
 func (m *mockManager) ParsePublic(destBase64 string) (*commondest.Destination, error) {
