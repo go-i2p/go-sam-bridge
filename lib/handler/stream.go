@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
+	"github.com/go-i2p/go-sam-bridge/lib/util"
 )
 
 // StreamHandler handles STREAM CONNECT, ACCEPT, and FORWARD commands per SAM 3.0-3.3.
@@ -89,6 +90,11 @@ func (h *StreamHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.R
 // handleConnect processes STREAM CONNECT command.
 // Request: STREAM CONNECT ID=$nickname DESTINATION=$dest [SILENT={true,false}] [FROM_PORT=nnn] [TO_PORT=nnn]
 // Response: STREAM STATUS RESULT=OK (if !SILENT) then socket becomes data pipe.
+//
+// Per SAMv3.md: "If SILENT=true is passed, the SAM bridge won't issue any other
+// message on the socket. If the connection fails, the socket will be closed.
+// If the connection succeeds, all remaining data passing through the current
+// socket is forwarded from and to the connected I2P destination peer."
 func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
 	// Parse required parameters
 	id := cmd.Get("ID")
@@ -112,12 +118,14 @@ func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*pro
 		return streamError("session is not STREAM style"), nil
 	}
 
-	// Parse optional parameters
+	// Parse optional parameters - parse SILENT early so we can handle failures correctly
 	silent := parseBool(cmd.Get("SILENT"), false)
 
 	// Parse and validate ports (SAM 3.2+)
 	fromPort, err := protocol.ValidatePortString(cmd.Get("FROM_PORT"))
 	if err != nil {
+		// Port validation errors still get responses even in silent mode
+		// as they occur before the actual connection attempt
 		return streamError(fmt.Sprintf("invalid FROM_PORT: %v", err)), nil
 	}
 	toPort, err := protocol.ValidatePortString(cmd.Get("TO_PORT"))
@@ -132,6 +140,10 @@ func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*pro
 
 	conn, err := h.Connector.Connect(sess, dest, fromPort, toPort)
 	if err != nil {
+		// Per SAM spec: If SILENT=true and connection fails, close socket without response
+		if silent {
+			return nil, util.NewSilentCloseError("connect", err)
+		}
 		return h.connectError(err), nil
 	}
 
@@ -151,6 +163,10 @@ func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*pro
 // handleAccept processes STREAM ACCEPT command.
 // Request: STREAM ACCEPT ID=$nickname [SILENT={true,false}]
 // Response: STREAM STATUS RESULT=OK, then $destination FROM_PORT=nnn TO_PORT=nnn
+//
+// Per SAMv3.md: "If SILENT=true is passed, after the connection was accepted,
+// the SAM bridge won't issue any other message on the socket. If the connection
+// failed, the socket will be closed."
 func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
 	// Parse required parameters
 	id := cmd.Get("ID")
@@ -169,7 +185,7 @@ func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*prot
 		return streamError("session is not STREAM style"), nil
 	}
 
-	// Parse optional parameters
+	// Parse optional parameters - parse SILENT early for correct failure handling
 	silent := parseBool(cmd.Get("SILENT"), false)
 
 	// Attempt accept
@@ -179,6 +195,10 @@ func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*prot
 
 	conn, info, err := h.Acceptor.Accept(sess)
 	if err != nil {
+		// Per SAM spec: If SILENT=true and accept fails, close socket without response
+		if silent {
+			return nil, util.NewSilentCloseError("accept", err)
+		}
 		return streamError(err.Error()), nil
 	}
 
@@ -188,12 +208,17 @@ func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*prot
 		return nil, nil
 	}
 
-	// Return OK response
-	// The caller should then send: $destination FROM_PORT=nnn TO_PORT=nnn\n
-	// followed by data forwarding
+	// Return OK response with destination info on additional line.
+	// Per SAMv3.md: After STREAM STATUS RESULT=OK, the bridge sends:
+	// $destination FROM_PORT=nnn TO_PORT=nnn\n
+	// Then data forwarding begins.
 	_ = conn
-	_ = info
-	return streamOK(), nil
+	resp := streamOK()
+	if info != nil {
+		destLine := fmt.Sprintf("%s FROM_PORT=%d TO_PORT=%d", info.Destination, info.FromPort, info.ToPort)
+		resp.WithAdditionalLine(destLine)
+	}
+	return resp, nil
 }
 
 // handleForward processes STREAM FORWARD command.

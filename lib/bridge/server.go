@@ -432,10 +432,24 @@ func (s *Server) sendPongTimeoutError(c *Connection) {
 }
 
 // sendResponse writes a response to the connection.
+// If the response has additional lines (e.g., STREAM ACCEPT destination info),
+// they are written after the main response line.
 func (s *Server) sendResponse(c *Connection, response *protocol.Response) error {
 	line := response.String()
 	_, err := c.WriteLine(line)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Send additional lines if present (e.g., destination info for STREAM ACCEPT)
+	for _, additionalLine := range response.AdditionalLines {
+		_, err = c.WriteLine(additionalLine + "\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Close gracefully shuts down the server.

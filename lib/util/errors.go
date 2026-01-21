@@ -61,6 +61,12 @@ var (
 
 	// ErrNotImplemented indicates a feature is not yet implemented.
 	ErrNotImplemented = errors.New("not implemented")
+
+	// ErrSilentClose indicates the connection should be closed silently
+	// without sending any response. Used when SILENT=true and an operation fails.
+	// Per SAMv3.md: "If SILENT=true is passed, the SAM bridge won't issue any
+	// other message on the socket. If the connection fails, the socket will be closed."
+	ErrSilentClose = errors.New("silent close requested")
 )
 
 // SessionError wraps an error with session context.
@@ -167,6 +173,50 @@ func (e *ConnectionError) Error() string {
 // Unwrap returns the underlying error for errors.Is and errors.As support.
 func (e *ConnectionError) Unwrap() error {
 	return e.Err
+}
+
+// SilentCloseError wraps an error that should cause the connection to be
+// closed silently without sending any response. This is used when SILENT=true
+// is set and an operation fails.
+// Per SAMv3.md: "If SILENT=true is passed, the SAM bridge won't issue any
+// other message on the socket. If the connection fails, the socket will be closed."
+type SilentCloseError struct {
+	Operation string // The operation that failed (e.g., "connect", "accept")
+	Err       error  // The underlying error
+}
+
+// NewSilentCloseError creates a new SilentCloseError.
+func NewSilentCloseError(operation string, err error) *SilentCloseError {
+	return &SilentCloseError{
+		Operation: operation,
+		Err:       err,
+	}
+}
+
+// Error implements the error interface.
+func (e *SilentCloseError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("silent close (%s): %v", e.Operation, e.Err)
+	}
+	return fmt.Sprintf("silent close (%s)", e.Operation)
+}
+
+// Unwrap returns the underlying error for errors.Is and errors.As support.
+func (e *SilentCloseError) Unwrap() error {
+	return e.Err
+}
+
+// IsSilentClose returns true if the error indicates the connection should
+// be closed without sending a response (SILENT=true behavior).
+func IsSilentClose(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrSilentClose) {
+		return true
+	}
+	var silentErr *SilentCloseError
+	return errors.As(err, &silentErr)
 }
 
 // IsRetryable returns true if the error represents a condition that may

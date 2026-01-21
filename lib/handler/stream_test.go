@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
+	"github.com/go-i2p/go-sam-bridge/lib/util"
 )
 
 // mockStreamConnector implements StreamConnector for testing.
@@ -145,6 +146,7 @@ func TestStreamHandler_HandleConnect(t *testing.T) {
 		connector      *mockStreamConnector
 		wantResult     string
 		wantNilResp    bool
+		wantSilentErr  bool // Expect SilentCloseError to be returned
 	}{
 		{
 			name:          "missing handshake",
@@ -230,6 +232,19 @@ func TestStreamHandler_HandleConnect(t *testing.T) {
 			registeredSess: &mockStreamSession{id: "test-session", style: session.StyleStream},
 			connector:      &mockStreamConnector{conn: &mockConn{}},
 			wantNilResp:    true,
+		},
+		{
+			name: "connection error with silent - returns SilentCloseError",
+			cmd: &protocol.Command{Verb: "STREAM", Action: "CONNECT", Options: map[string]string{
+				"ID":          "test-session",
+				"DESTINATION": "AAAA...",
+				"SILENT":      "true",
+			}},
+			handshakeDone:  true,
+			registeredSess: &mockStreamSession{id: "test-session", style: session.StyleStream},
+			connector:      &mockStreamConnector{err: errors.New("connection failed")},
+			wantNilResp:    true,
+			wantSilentErr:  true,
 		},
 		{
 			name: "connect with ports",
@@ -337,6 +352,21 @@ func TestStreamHandler_HandleConnect(t *testing.T) {
 			}
 
 			resp, err := handler.Handle(ctx, tt.cmd)
+
+			// Check for expected SilentCloseError (SILENT=true failure case)
+			if tt.wantSilentErr {
+				if err == nil {
+					t.Fatal("Handle() expected SilentCloseError, got nil error")
+				}
+				if !util.IsSilentClose(err) {
+					t.Errorf("Handle() error = %v, want SilentCloseError", err)
+				}
+				if resp != nil {
+					t.Errorf("Handle() expected nil response with SilentCloseError, got %v", resp)
+				}
+				return
+			}
+
 			if err != nil {
 				t.Fatalf("Handle() error = %v", err)
 			}
@@ -369,6 +399,8 @@ func TestStreamHandler_HandleAccept(t *testing.T) {
 		acceptor       *mockStreamAcceptor
 		wantResult     string
 		wantNilResp    bool
+		wantSilentErr  bool   // Expect SilentCloseError to be returned
+		wantDestLine   string // Expected destination line in AdditionalLines
 	}{
 		{
 			name:          "missing ID",
@@ -424,7 +456,22 @@ func TestStreamHandler_HandleAccept(t *testing.T) {
 				conn: &mockConn{},
 				info: &AcceptInfo{Destination: "AAAA...", FromPort: 0, ToPort: 0},
 			},
-			wantResult: protocol.ResultOK,
+			wantResult:   protocol.ResultOK,
+			wantDestLine: "AAAA... FROM_PORT=0 TO_PORT=0",
+		},
+		{
+			name: "successful accept with ports",
+			cmd: &protocol.Command{Verb: "STREAM", Action: "ACCEPT", Options: map[string]string{
+				"ID": "test-session",
+			}},
+			handshakeDone:  true,
+			registeredSess: &mockStreamSession{id: "test-session", style: session.StyleStream},
+			acceptor: &mockStreamAcceptor{
+				conn: &mockConn{},
+				info: &AcceptInfo{Destination: "BASE64DEST", FromPort: 8080, ToPort: 443},
+			},
+			wantResult:   protocol.ResultOK,
+			wantDestLine: "BASE64DEST FROM_PORT=8080 TO_PORT=443",
 		},
 		{
 			name: "accept with silent",
@@ -439,6 +486,18 @@ func TestStreamHandler_HandleAccept(t *testing.T) {
 				info: &AcceptInfo{Destination: "AAAA...", FromPort: 0, ToPort: 0},
 			},
 			wantNilResp: true,
+		},
+		{
+			name: "accept error with silent - returns SilentCloseError",
+			cmd: &protocol.Command{Verb: "STREAM", Action: "ACCEPT", Options: map[string]string{
+				"ID":     "test-session",
+				"SILENT": "true",
+			}},
+			handshakeDone:  true,
+			registeredSess: &mockStreamSession{id: "test-session", style: session.StyleStream},
+			acceptor:       &mockStreamAcceptor{err: errors.New("accept failed")},
+			wantNilResp:    true,
+			wantSilentErr:  true,
 		},
 	}
 
@@ -462,6 +521,21 @@ func TestStreamHandler_HandleAccept(t *testing.T) {
 			}
 
 			resp, err := handler.Handle(ctx, tt.cmd)
+
+			// Check for expected SilentCloseError (SILENT=true failure case)
+			if tt.wantSilentErr {
+				if err == nil {
+					t.Fatal("Handle() expected SilentCloseError, got nil error")
+				}
+				if !util.IsSilentClose(err) {
+					t.Errorf("Handle() error = %v, want SilentCloseError", err)
+				}
+				if resp != nil {
+					t.Errorf("Handle() expected nil response with SilentCloseError, got %v", resp)
+				}
+				return
+			}
+
 			if err != nil {
 				t.Fatalf("Handle() error = %v", err)
 			}
@@ -480,6 +554,15 @@ func TestStreamHandler_HandleAccept(t *testing.T) {
 			respStr := resp.String()
 			if !strings.Contains(respStr, "RESULT="+tt.wantResult) {
 				t.Errorf("response = %q, want RESULT=%s", respStr, tt.wantResult)
+			}
+
+			// Check for expected destination line in AdditionalLines
+			if tt.wantDestLine != "" {
+				if !resp.HasAdditionalLines() {
+					t.Errorf("Handle() expected AdditionalLines with destination, got none")
+				} else if len(resp.AdditionalLines) < 1 || resp.AdditionalLines[0] != tt.wantDestLine {
+					t.Errorf("Handle() AdditionalLines[0] = %q, want %q", resp.AdditionalLines[0], tt.wantDestLine)
+				}
 			}
 		})
 	}

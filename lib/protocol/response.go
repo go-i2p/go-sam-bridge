@@ -10,10 +10,17 @@ import (
 //	VERB [ACTION] [KEY=VALUE]...
 //
 // All responses are terminated by a newline character.
+// Some responses (like STREAM ACCEPT) may include additional lines
+// that must be sent after the main response (e.g., destination info).
 type Response struct {
 	Verb    string
 	Action  string
 	Options []string // Pre-formatted KEY=VALUE pairs
+
+	// AdditionalLines are sent after the main response line.
+	// Used for STREAM ACCEPT which sends destination info on a separate line.
+	// Each additional line is sent as-is with newline terminator.
+	AdditionalLines []string
 }
 
 // NewResponse creates a new response builder with the given verb.
@@ -60,7 +67,17 @@ func (r *Response) WithOption(key, value string) *Response {
 	return r
 }
 
+// WithAdditionalLine adds an additional line to be sent after the main response.
+// Used for STREAM ACCEPT which sends destination info on a separate line.
+// The line should NOT include a trailing newline; it will be added automatically.
+func (r *Response) WithAdditionalLine(line string) *Response {
+	r.AdditionalLines = append(r.AdditionalLines, line)
+	return r
+}
+
 // String formats the response as a SAM protocol line with newline terminator.
+// Note: This only returns the main response line. Use FullString() to get
+// all lines including additional lines.
 func (r *Response) String() string {
 	var parts []string
 	parts = append(parts, r.Verb)
@@ -69,6 +86,21 @@ func (r *Response) String() string {
 	}
 	parts = append(parts, r.Options...)
 	return strings.Join(parts, " ") + "\n"
+}
+
+// FullString returns the complete response including all additional lines.
+// Each line is terminated with a newline.
+func (r *Response) FullString() string {
+	result := r.String()
+	for _, line := range r.AdditionalLines {
+		result += line + "\n"
+	}
+	return result
+}
+
+// HasAdditionalLines returns true if the response has additional lines to send.
+func (r *Response) HasAdditionalLines() bool {
+	return len(r.AdditionalLines) > 0
 }
 
 // Bytes returns the response as a byte slice for writing to connections.
