@@ -176,13 +176,13 @@ func (h *SessionHandler) parseExistingDest(privKeyBase64 string) (*session.Desti
 }
 
 // createSession creates a style-specific session implementation.
-// Returns the appropriate session type (BaseSession, RawSessionImpl, etc.)
+// Returns the appropriate session type (BaseSession, RawSessionImpl, DatagramSessionImpl, etc.)
 // based on the STYLE parameter.
 //
 // Per SAM specification:
 //   - STYLE=STREAM: Creates BaseSession (StreamSessionImpl when fully integrated)
 //   - STYLE=RAW: Creates RawSessionImpl with PROTOCOL/HEADER options
-//   - STYLE=DATAGRAM: Creates BaseSession (DatagramSessionImpl when implemented)
+//   - STYLE=DATAGRAM: Creates DatagramSessionImpl with PORT/HOST forwarding options
 //   - STYLE=PRIMARY: Creates BaseSession (PrimarySessionImpl when implemented)
 func (h *SessionHandler) createSession(
 	id string,
@@ -195,8 +195,10 @@ func (h *SessionHandler) createSession(
 	switch style {
 	case session.StyleRaw:
 		return h.createRawSession(id, dest, conn, config, cmd)
+	case session.StyleDatagram:
+		return h.createDatagramSession(id, dest, conn, config, cmd)
 	default:
-		// For STREAM, DATAGRAM, PRIMARY - use BaseSession for now
+		// For STREAM, PRIMARY - use BaseSession for now
 		// These will be upgraded to specific implementations as completed
 		baseSession := session.NewBaseSession(id, style, dest, conn, config)
 		baseSession.SetStatus(session.StatusActive)
@@ -243,6 +245,48 @@ func (h *SessionHandler) createRawSession(
 	rawSession.Activate()
 
 	return rawSession, nil
+}
+
+// createDatagramSession creates a DatagramSessionImpl for STYLE=DATAGRAM.
+// Handles DATAGRAM-specific options: PORT, HOST for forwarding.
+//
+// Per SAM 3.0 specification:
+//   - PORT: Forwarding port for incoming datagrams
+//   - HOST: Forwarding host (default 127.0.0.1)
+//
+// Repliable datagrams include the sender's destination and signature,
+// enabling replies to the sender.
+func (h *SessionHandler) createDatagramSession(
+	id string,
+	dest *session.Destination,
+	conn net.Conn,
+	config *session.SessionConfig,
+	cmd *protocol.Command,
+) (*session.DatagramSessionImpl, error) {
+	// Create the datagram session
+	datagramSession := session.NewDatagramSession(id, dest, conn, config)
+
+	// Parse forwarding configuration (PORT/HOST)
+	if portStr := cmd.Get("PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT for forwarding: %w", err)
+		}
+
+		host := cmd.Get("HOST")
+		if host == "" {
+			host = "127.0.0.1" // Default per SAM spec
+		}
+
+		if err := datagramSession.SetForwarding(host, port); err != nil {
+			return nil, fmt.Errorf("failed to set forwarding: %w", err)
+		}
+	}
+
+	// Activate the session
+	datagramSession.Activate()
+
+	return datagramSession, nil
 }
 
 // parseConfig extracts session configuration from command options.
