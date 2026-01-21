@@ -183,6 +183,8 @@ func (h *SessionHandler) parseExistingDest(privKeyBase64 string) (*session.Desti
 //   - STYLE=STREAM: Creates BaseSession (StreamSessionImpl when fully integrated)
 //   - STYLE=RAW: Creates RawSessionImpl with PROTOCOL/HEADER options
 //   - STYLE=DATAGRAM: Creates DatagramSessionImpl with PORT/HOST forwarding options
+//   - STYLE=DATAGRAM2: Creates Datagram2SessionImpl with replay protection
+//   - STYLE=DATAGRAM3: Creates Datagram3SessionImpl (unauthenticated)
 //   - STYLE=PRIMARY: Creates BaseSession (PrimarySessionImpl when implemented)
 func (h *SessionHandler) createSession(
 	id string,
@@ -197,6 +199,10 @@ func (h *SessionHandler) createSession(
 		return h.createRawSession(id, dest, conn, config, cmd)
 	case session.StyleDatagram:
 		return h.createDatagramSession(id, dest, conn, config, cmd)
+	case session.StyleDatagram2:
+		return h.createDatagram2Session(id, dest, conn, config, cmd)
+	case session.StyleDatagram3:
+		return h.createDatagram3Session(id, dest, conn, config, cmd)
 	default:
 		// For STREAM, PRIMARY - use BaseSession for now
 		// These will be upgraded to specific implementations as completed
@@ -287,6 +293,93 @@ func (h *SessionHandler) createDatagramSession(
 	datagramSession.Activate()
 
 	return datagramSession, nil
+}
+
+// createDatagram2Session creates a Datagram2SessionImpl for STYLE=DATAGRAM2.
+// Handles DATAGRAM2-specific options: PORT, HOST for forwarding.
+//
+// Per SAM 3.3 specification, DATAGRAM2 provides:
+//   - Authenticated, repliable datagrams (like DATAGRAM)
+//   - Replay protection via nonce/timestamp tracking
+//   - Offline signature support
+//
+// DATAGRAM2 is intended to replace repliable datagrams for new applications
+// that don't require backward compatibility.
+func (h *SessionHandler) createDatagram2Session(
+	id string,
+	dest *session.Destination,
+	conn net.Conn,
+	config *session.SessionConfig,
+	cmd *protocol.Command,
+) (*session.Datagram2SessionImpl, error) {
+	// Create the datagram2 session
+	dg2Session := session.NewDatagram2Session(id, dest, conn, config)
+
+	// Parse forwarding configuration (PORT/HOST)
+	if portStr := cmd.Get("PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT for forwarding: %w", err)
+		}
+
+		host := cmd.Get("HOST")
+		if host == "" {
+			host = "127.0.0.1" // Default per SAM spec
+		}
+
+		if err := dg2Session.SetForwarding(host, port); err != nil {
+			return nil, fmt.Errorf("failed to set forwarding: %w", err)
+		}
+	}
+
+	// Activate the session
+	dg2Session.SetStatus(session.StatusActive)
+
+	return dg2Session, nil
+}
+
+// createDatagram3Session creates a Datagram3SessionImpl for STYLE=DATAGRAM3.
+// Handles DATAGRAM3-specific options: PORT, HOST for forwarding.
+//
+// Per SAM 3.3 specification, DATAGRAM3 provides:
+//   - Repliable but NOT authenticated datagrams
+//   - Source is a 32-byte hash (44-byte base64)
+//   - Client must do NAMING LOOKUP to get full destination for reply
+//   - No replay protection (unauthenticated)
+//
+// Security Note: Application designers should use extreme caution with DATAGRAM3
+// and consider the security implications of unauthenticated datagrams.
+func (h *SessionHandler) createDatagram3Session(
+	id string,
+	dest *session.Destination,
+	conn net.Conn,
+	config *session.SessionConfig,
+	cmd *protocol.Command,
+) (*session.Datagram3SessionImpl, error) {
+	// Create the datagram3 session
+	dg3Session := session.NewDatagram3Session(id, dest, conn, config)
+
+	// Parse forwarding configuration (PORT/HOST)
+	if portStr := cmd.Get("PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT for forwarding: %w", err)
+		}
+
+		host := cmd.Get("HOST")
+		if host == "" {
+			host = "127.0.0.1" // Default per SAM spec
+		}
+
+		if err := dg3Session.SetForwarding(host, port); err != nil {
+			return nil, fmt.Errorf("failed to set forwarding: %w", err)
+		}
+	}
+
+	// Activate the session
+	dg3Session.SetStatus(session.StatusActive)
+
+	return dg3Session, nil
 }
 
 // parseConfig extracts session configuration from command options.

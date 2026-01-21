@@ -453,6 +453,118 @@ func TestSessionHandler_Handle(t *testing.T) {
 			wantResult:    protocol.ResultOK,
 			wantSession:   true,
 		},
+		// DATAGRAM2 session creation tests (SAM 3.3)
+		{
+			name: "successful DATAGRAM2 session with TRANSIENT",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM2",
+					"ID":          "datagram2-session-1",
+					"DESTINATION": "TRANSIENT",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
+		{
+			name: "successful DATAGRAM2 session with forwarding",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM2",
+					"ID":          "datagram2-session-2",
+					"DESTINATION": "TRANSIENT",
+					"PORT":        "7655",
+					"HOST":        "127.0.0.1",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
+		{
+			name: "successful DATAGRAM2 session with port options",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM2",
+					"ID":          "datagram2-session-3",
+					"DESTINATION": "TRANSIENT",
+					"FROM_PORT":   "1234",
+					"TO_PORT":     "5678",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
+		// DATAGRAM3 session creation tests (SAM 3.3)
+		{
+			name: "successful DATAGRAM3 session with TRANSIENT",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM3",
+					"ID":          "datagram3-session-1",
+					"DESTINATION": "TRANSIENT",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
+		{
+			name: "successful DATAGRAM3 session with forwarding",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM3",
+					"ID":          "datagram3-session-2",
+					"DESTINATION": "TRANSIENT",
+					"PORT":        "7655",
+					"HOST":        "127.0.0.1",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
+		{
+			name: "successful DATAGRAM3 session with port options",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM3",
+					"ID":          "datagram3-session-3",
+					"DESTINATION": "TRANSIENT",
+					"FROM_PORT":   "1234",
+					"TO_PORT":     "5678",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultOK,
+			wantSession:   true,
+		},
 	}
 
 	for _, tt := range tests {
