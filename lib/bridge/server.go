@@ -157,6 +157,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
+		// Check for PONG timeout (if we sent a PING and are waiting for PONG)
+		if c.IsPongOverdue(s.config.Timeouts.PongTimeout) {
+			s.sendPongTimeoutError(c)
+			return
+		}
+
 		// Set read deadline based on state
 		deadline := s.getDeadline(c)
 		if !deadline.IsZero() {
@@ -168,6 +174,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// Read command line
 		line, err := s.readLine(c.Reader())
 		if err != nil {
+			// Handle timeout errors with proper SAM responses per SAM 3.2
+			if s.isTimeoutError(err) {
+				s.sendTimeoutError(c)
+			}
 			return
 		}
 
@@ -178,6 +188,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 		if err != nil {
 			s.sendParseError(c, err)
 			continue
+		}
+
+		// Handle PONG responses - clear pending PING
+		if strings.EqualFold(cmd.Verb, "PONG") {
+			c.ClearPendingPing()
+			continue // PONG is handled, no response needed
 		}
 
 		// Handle the command
@@ -367,6 +383,54 @@ func (s *Server) sendParseError(c *Connection, err error) error {
 	return s.sendResponse(c, response)
 }
 
+// isTimeoutError checks if an error is a network timeout.
+func (s *Server) isTimeoutError(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	return false
+}
+
+// sendTimeoutError sends a timeout error response based on connection state.
+// Per SAM 3.2:
+//   - Before HELLO: HELLO REPLY RESULT=I2P_ERROR MESSAGE="..."
+//   - After HELLO: SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
+func (s *Server) sendTimeoutError(c *Connection) {
+	var response *protocol.Response
+
+	switch c.State() {
+	case StateNew, StateHandshaking:
+		// Timeout before HELLO is complete
+		response = protocol.NewResponse("HELLO").
+			WithAction("REPLY").
+			WithResult("I2P_ERROR").
+			WithMessage("connection timeout: HELLO not received")
+	default:
+		// Timeout after HELLO, before next command
+		response = protocol.NewResponse("SESSION").
+			WithAction("STATUS").
+			WithResult("I2P_ERROR").
+			WithMessage("connection timeout: no command received")
+	}
+
+	// Best effort - ignore write errors since we're closing anyway
+	_ = s.sendResponse(c, response)
+}
+
+// sendPongTimeoutError sends a PONG timeout error response.
+// Per SAM 3.2, PING/PONG is used for keepalive. If PONG is not received
+// within the configured timeout, the connection is closed.
+func (s *Server) sendPongTimeoutError(c *Connection) {
+	response := protocol.NewResponse("SESSION").
+		WithAction("STATUS").
+		WithResult("I2P_ERROR").
+		WithMessage("connection timeout: PONG not received")
+
+	// Best effort - ignore write errors since we're closing anyway
+	_ = s.sendResponse(c, response)
+}
+
 // sendResponse writes a response to the connection.
 func (s *Server) sendResponse(c *Connection, response *protocol.Response) error {
 	line := response.String()
@@ -448,4 +512,19 @@ func ReadLine(reader *bufio.Reader, maxLen int) (string, error) {
 	}
 
 	return line.String(), nil
+}
+
+// SendPing sends a PING command to a connection for keepalive.
+// Per SAM 3.2, PING/PONG is used for keepalive. The text is echoed back in PONG.
+// This method sets the pending PING state on the connection.
+func (s *Server) SendPing(c *Connection, text string) error {
+	pingCmd := "PING"
+	if text != "" {
+		pingCmd += " " + text
+	}
+
+	c.SetPendingPing(text)
+
+	_, err := c.WriteLine(pingCmd)
+	return err
 }

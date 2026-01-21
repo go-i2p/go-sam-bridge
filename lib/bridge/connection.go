@@ -80,6 +80,20 @@ type Connection struct {
 
 	// remoteAddr is the client's remote address (cached for logging after close).
 	remoteAddr string
+
+	// pendingPing tracks an outstanding PING awaiting PONG response.
+	// Nil when no PING is pending.
+	pendingPing *PendingPing
+}
+
+// PendingPing tracks an outstanding PING command awaiting PONG.
+// Per SAM 3.2, PING/PONG is used for keepalive.
+type PendingPing struct {
+	// Text is the arbitrary text sent with the PING.
+	Text string
+
+	// SentAt is when the PING was sent.
+	SentAt time.Time
 }
 
 // NewConnection creates a new Connection for the given net.Conn.
@@ -271,4 +285,41 @@ func (c *Connection) WriteString(s string) (int, error) {
 // Per SAM spec, responses are terminated with newline.
 func (c *Connection) WriteLine(s string) (int, error) {
 	return c.Write([]byte(s + "\n"))
+}
+
+// SetPendingPing records that a PING has been sent and is awaiting PONG.
+// Per SAM 3.2, PING/PONG is used for keepalive.
+func (c *Connection) SetPendingPing(text string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pendingPing = &PendingPing{
+		Text:   text,
+		SentAt: time.Now(),
+	}
+}
+
+// GetPendingPing returns the pending PING if one is outstanding.
+// Returns nil if no PING is pending.
+func (c *Connection) GetPendingPing() *PendingPing {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pendingPing
+}
+
+// ClearPendingPing clears any pending PING after PONG is received.
+func (c *Connection) ClearPendingPing() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pendingPing = nil
+}
+
+// IsPongOverdue returns true if a PING is pending and the timeout has elapsed.
+// timeout should be the configured PongTimeout duration.
+func (c *Connection) IsPongOverdue(timeout time.Duration) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.pendingPing == nil || timeout <= 0 {
+		return false
+	}
+	return time.Since(c.pendingPing.SentAt) > timeout
 }

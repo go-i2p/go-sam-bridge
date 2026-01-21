@@ -551,3 +551,238 @@ func TestIsAuthCommand(t *testing.T) {
 		})
 	}
 }
+
+// mockTimeoutError implements net.Error with timeout behavior.
+type mockTimeoutError struct {
+	timeout   bool
+	temporary bool
+}
+
+func (e *mockTimeoutError) Error() string   { return "mock timeout error" }
+func (e *mockTimeoutError) Timeout() bool   { return e.timeout }
+func (e *mockTimeoutError) Temporary() bool { return e.temporary }
+
+func TestIsTimeoutError(t *testing.T) {
+	registry := newMockRegistry()
+	config := DefaultConfig()
+	server, err := NewServer(config, registry)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "timeout error",
+			err:  &mockTimeoutError{timeout: true},
+			want: true,
+		},
+		{
+			name: "non-timeout error",
+			err:  &mockTimeoutError{timeout: false},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := server.isTimeoutError(tt.err)
+			if got != tt.want {
+				t.Errorf("isTimeoutError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSendTimeoutError(t *testing.T) {
+	tests := []struct {
+		name          string
+		state         ConnectionState
+		wantVerb      string
+		wantSubstring string
+	}{
+		{
+			name:          "new connection",
+			state:         StateNew,
+			wantVerb:      "HELLO",
+			wantSubstring: "HELLO not received",
+		},
+		{
+			name:          "handshaking",
+			state:         StateHandshaking,
+			wantVerb:      "HELLO",
+			wantSubstring: "HELLO not received",
+		},
+		{
+			name:          "ready",
+			state:         StateReady,
+			wantVerb:      "SESSION",
+			wantSubstring: "no command received",
+		},
+		{
+			name:          "session bound",
+			state:         StateSessionBound,
+			wantVerb:      "SESSION",
+			wantSubstring: "no command received",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := newMockRegistry()
+			config := DefaultConfig()
+			server, err := NewServer(config, registry)
+			if err != nil {
+				t.Fatalf("NewServer() error = %v", err)
+			}
+
+			// Create pipe for testing
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			conn := NewConnection(serverConn, 1024)
+			conn.SetState(tt.state)
+
+			// Read in goroutine
+			done := make(chan string)
+			go func() {
+				reader := bufio.NewReader(clientConn)
+				line, _ := reader.ReadString('\n')
+				done <- line
+			}()
+
+			server.sendTimeoutError(conn)
+
+			select {
+			case line := <-done:
+				if !strings.Contains(line, tt.wantVerb) {
+					t.Errorf("response = %q, want verb %s", line, tt.wantVerb)
+				}
+				if !strings.Contains(line, "I2P_ERROR") {
+					t.Errorf("response = %q, want I2P_ERROR", line)
+				}
+				if !strings.Contains(line, tt.wantSubstring) {
+					t.Errorf("response = %q, want substring %q", line, tt.wantSubstring)
+				}
+			case <-time.After(time.Second):
+				t.Error("timeout waiting for response")
+			}
+		})
+	}
+}
+
+func TestSendPongTimeoutError(t *testing.T) {
+	registry := newMockRegistry()
+	config := DefaultConfig()
+	server, err := NewServer(config, registry)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	// Create pipe for testing
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	conn := NewConnection(serverConn, 1024)
+
+	// Read in goroutine
+	done := make(chan string)
+	go func() {
+		reader := bufio.NewReader(clientConn)
+		line, _ := reader.ReadString('\n')
+		done <- line
+	}()
+
+	server.sendPongTimeoutError(conn)
+
+	select {
+	case line := <-done:
+		if !strings.Contains(line, "SESSION") {
+			t.Errorf("response = %q, want SESSION", line)
+		}
+		if !strings.Contains(line, "I2P_ERROR") {
+			t.Errorf("response = %q, want I2P_ERROR", line)
+		}
+		if !strings.Contains(line, "PONG not received") {
+			t.Errorf("response = %q, want 'PONG not received'", line)
+		}
+	case <-time.After(time.Second):
+		t.Error("timeout waiting for response")
+	}
+}
+
+func TestSendPing(t *testing.T) {
+	registry := newMockRegistry()
+	config := DefaultConfig()
+	server, err := NewServer(config, registry)
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		text     string
+		wantLine string
+	}{
+		{
+			name:     "ping without text",
+			text:     "",
+			wantLine: "PING",
+		},
+		{
+			name:     "ping with text",
+			text:     "keepalive",
+			wantLine: "PING keepalive",
+		},
+		{
+			name:     "ping with multiple words",
+			text:     "hello world",
+			wantLine: "PING hello world",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			conn := NewConnection(serverConn, 1024)
+
+			// Read in goroutine
+			done := make(chan string)
+			go func() {
+				reader := bufio.NewReader(clientConn)
+				line, _ := reader.ReadString('\n')
+				done <- strings.TrimSpace(line)
+			}()
+
+			err := server.SendPing(conn, tt.text)
+			if err != nil {
+				t.Fatalf("SendPing() error = %v", err)
+			}
+
+			// Verify pending ping is set
+			pending := conn.GetPendingPing()
+			if pending == nil {
+				t.Error("pending ping not set")
+			} else if pending.Text != tt.text {
+				t.Errorf("pending ping text = %q, want %q", pending.Text, tt.text)
+			}
+
+			select {
+			case line := <-done:
+				if line != tt.wantLine {
+					t.Errorf("sent = %q, want %q", line, tt.wantLine)
+				}
+			case <-time.After(time.Second):
+				t.Error("timeout waiting for ping")
+			}
+		})
+	}
+}

@@ -30,6 +30,10 @@ const (
 	// Per SAM 3.2, servers may implement timeouts for subsequent commands.
 	DefaultCommandTimeout = 60 * time.Second
 
+	// DefaultPongTimeout is the maximum time to wait for PONG after PING.
+	// Per SAM 3.2, PING/PONG is used for keepalive.
+	DefaultPongTimeout = 30 * time.Second
+
 	// DefaultReadBufferSize is the default buffer size for reading commands.
 	DefaultReadBufferSize = 8192
 
@@ -88,6 +92,11 @@ type TimeoutConfig struct {
 
 	// Idle is the maximum time a connection can be idle (0 = no limit).
 	Idle time.Duration
+
+	// PongTimeout is the maximum time to wait for PONG after sending PING.
+	// Per SAM 3.2, PING/PONG is used for keepalive.
+	// If a PONG is not received within this duration, the connection may be closed.
+	PongTimeout time.Duration
 }
 
 // LimitConfig holds buffer and connection limits.
@@ -117,9 +126,10 @@ func DefaultConfig() *Config {
 			Users:    make(map[string]string),
 		},
 		Timeouts: TimeoutConfig{
-			Handshake: DefaultHandshakeTimeout,
-			Command:   DefaultCommandTimeout,
-			Idle:      0, // No idle timeout by default
+			Handshake:   DefaultHandshakeTimeout,
+			Command:     DefaultCommandTimeout,
+			Idle:        0, // No idle timeout by default
+			PongTimeout: DefaultPongTimeout,
 		},
 		Limits: LimitConfig{
 			ReadBufferSize:       DefaultReadBufferSize,

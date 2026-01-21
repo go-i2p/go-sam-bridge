@@ -346,3 +346,70 @@ func TestConnection_ConcurrentAccess(t *testing.T) {
 	<-done
 	<-done
 }
+
+func TestConnection_PendingPing(t *testing.T) {
+	conn := newMockConn()
+	c := NewConnection(conn, 1024)
+
+	// Initially no pending ping
+	if pending := c.GetPendingPing(); pending != nil {
+		t.Error("expected no pending ping initially")
+	}
+
+	// Set pending ping
+	c.SetPendingPing("test-ping")
+	pending := c.GetPendingPing()
+	if pending == nil {
+		t.Fatal("expected pending ping")
+	}
+	if pending.Text != "test-ping" {
+		t.Errorf("pending text = %q, want %q", pending.Text, "test-ping")
+	}
+	if time.Since(pending.SentAt) > time.Second {
+		t.Error("pending SentAt should be recent")
+	}
+
+	// Clear pending ping
+	c.ClearPendingPing()
+	if c.GetPendingPing() != nil {
+		t.Error("expected no pending ping after clear")
+	}
+}
+
+func TestConnection_IsPongOverdue(t *testing.T) {
+	conn := newMockConn()
+	c := NewConnection(conn, 1024)
+
+	// No pending ping - not overdue
+	if c.IsPongOverdue(time.Second) {
+		t.Error("expected not overdue with no pending ping")
+	}
+
+	// Set pending ping
+	c.SetPendingPing("test")
+
+	// Just set - not overdue
+	if c.IsPongOverdue(time.Second) {
+		t.Error("expected not overdue immediately after setting")
+	}
+
+	// Zero timeout - never overdue
+	if c.IsPongOverdue(0) {
+		t.Error("expected not overdue with zero timeout")
+	}
+
+	// Simulate old pending ping by manually setting SentAt
+	c.mu.Lock()
+	c.pendingPing.SentAt = time.Now().Add(-2 * time.Second)
+	c.mu.Unlock()
+
+	// Now should be overdue with 1 second timeout
+	if !c.IsPongOverdue(time.Second) {
+		t.Error("expected overdue after timeout elapsed")
+	}
+
+	// But not overdue with longer timeout
+	if c.IsPongOverdue(5 * time.Second) {
+		t.Error("expected not overdue with longer timeout")
+	}
+}
