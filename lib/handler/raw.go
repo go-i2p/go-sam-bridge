@@ -72,6 +72,13 @@ func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.
 		return rawError("no session bound"), nil
 	}
 
+	// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
+	// on a primary session or on subsessions"
+	// RAW SEND is a V1/V2 command - reject on PRIMARY sessions
+	if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
+		return rawError("RAW SEND not supported on PRIMARY sessions; use UDP socket"), nil
+	}
+
 	// Verify session is RAW style
 	rawSess, ok := ctx.Session.(session.RawSession)
 	if !ok {

@@ -23,7 +23,23 @@ func NewSessionHandler(destManager destination.Manager) *SessionHandler {
 	return &SessionHandler{destManager: destManager}
 }
 
-// Handle processes a SESSION CREATE command.
+// Handle processes a SESSION command.
+// Per SAMv3.md, SESSION commands manage SAM sessions.
+// Dispatches to handleCreate, handleAdd, or handleRemove based on action.
+func (h *SessionHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	switch cmd.Action {
+	case protocol.ActionCreate:
+		return h.handleCreate(ctx, cmd)
+	case protocol.ActionAdd:
+		return h.handleAdd(ctx, cmd)
+	case protocol.ActionRemove:
+		return h.handleRemove(ctx, cmd)
+	default:
+		return sessionError("unknown SESSION action: " + cmd.Action), nil
+	}
+}
+
+// handleCreate processes a SESSION CREATE command.
 // Per SAMv3.md, SESSION CREATE establishes a new SAM session.
 //
 // Request: SESSION CREATE STYLE=STREAM ID=$nickname DESTINATION={$privkey,TRANSIENT} [options...]
@@ -33,7 +49,7 @@ func NewSessionHandler(destManager destination.Manager) *SessionHandler {
 //	SESSION STATUS RESULT=DUPLICATED_DEST
 //	SESSION STATUS RESULT=INVALID_KEY
 //	SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
-func (h *SessionHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+func (h *SessionHandler) handleCreate(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
 	// Require handshake completion
 	if !ctx.HandshakeComplete {
 		return sessionError("handshake not complete"), nil
@@ -476,6 +492,239 @@ func sessionDuplicatedID() *protocol.Response {
 	return protocol.NewResponse(protocol.VerbSession).
 		WithAction(protocol.ActionStatus).
 		WithResult(protocol.ResultDuplicatedID)
+}
+
+// handleAdd processes a SESSION ADD command.
+// Per SAMv3.md, SESSION ADD creates a subsession on a PRIMARY session.
+//
+// Request: SESSION ADD STYLE=$style ID=$nickname [options...]
+// Response: SESSION STATUS RESULT=OK DESTINATION=$privkey
+//
+//	SESSION STATUS RESULT=DUPLICATED_ID
+//	SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
+//
+// SESSION ADD is only valid on a PRIMARY session's control socket.
+// The subsession uses the destination from the PRIMARY session.
+func (h *SessionHandler) handleAdd(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	// Require handshake completion
+	if !ctx.HandshakeComplete {
+		return sessionError("handshake not complete"), nil
+	}
+
+	// Must have a bound PRIMARY session
+	if ctx.Session == nil {
+		return sessionError("no session bound to this connection"), nil
+	}
+
+	// Verify session is a PRIMARY session
+	primarySession, ok := ctx.Session.(session.PrimarySession)
+	if !ok {
+		return sessionError("SESSION ADD requires a PRIMARY session"), nil
+	}
+
+	// Verify session is active
+	if ctx.Session.Status() != session.StatusActive {
+		return sessionError("session not active"), nil
+	}
+
+	// Parse required parameters
+	style := session.Style(cmd.Get("STYLE"))
+	if !style.IsValid() {
+		return sessionError("invalid or missing STYLE"), nil
+	}
+
+	// Validate style - cannot add PRIMARY/MASTER subsessions
+	if style.IsPrimary() {
+		return sessionError("cannot create PRIMARY subsession"), nil
+	}
+
+	id := cmd.Get("ID")
+	if id == "" {
+		return sessionError("missing ID"), nil
+	}
+
+	// Validate ID contains no whitespace
+	if containsWhitespace(id) {
+		return sessionError("ID may not contain whitespace"), nil
+	}
+
+	// DESTINATION is not allowed for SESSION ADD - uses PRIMARY's destination
+	if cmd.Get("DESTINATION") != "" {
+		return sessionError("DESTINATION not allowed on SESSION ADD"), nil
+	}
+
+	// Parse subsession options
+	subOptions, err := h.parseSubsessionOptions(cmd, style)
+	if err != nil {
+		return sessionError(err.Error()), nil
+	}
+
+	// Add the subsession
+	if _, err := primarySession.AddSubsession(id, style, *subOptions); err != nil {
+		// Check for duplicate ID (from either util package or session package)
+		if err == util.ErrDuplicateID || err == session.ErrDuplicateSubsessionID {
+			return sessionDuplicatedID(), nil
+		}
+		return sessionError(err.Error()), nil
+	}
+
+	// Get destination from PRIMARY session for response
+	dest := ctx.Session.Destination()
+	destBase64 := string(dest.PublicKey)
+
+	return sessionOK(destBase64), nil
+}
+
+// handleRemove processes a SESSION REMOVE command.
+// Per SAMv3.md, SESSION REMOVE closes and removes a subsession from a PRIMARY session.
+//
+// Request: SESSION REMOVE ID=$nickname
+// Response: SESSION STATUS RESULT=OK
+//
+//	SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
+//
+// After removal, the subsession is closed and may not be used.
+func (h *SessionHandler) handleRemove(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	// Require handshake completion
+	if !ctx.HandshakeComplete {
+		return sessionError("handshake not complete"), nil
+	}
+
+	// Must have a bound PRIMARY session
+	if ctx.Session == nil {
+		return sessionError("no session bound to this connection"), nil
+	}
+
+	// Verify session is a PRIMARY session
+	primarySession, ok := ctx.Session.(session.PrimarySession)
+	if !ok {
+		return sessionError("SESSION REMOVE requires a PRIMARY session"), nil
+	}
+
+	// Parse ID
+	id := cmd.Get("ID")
+	if id == "" {
+		return sessionError("missing ID"), nil
+	}
+
+	// No other options should be set per spec
+	// (we don't enforce this strictly, just ignore them)
+
+	// Remove the subsession
+	if err := primarySession.RemoveSubsession(id); err != nil {
+		return sessionError(err.Error()), nil
+	}
+
+	// Return OK with PRIMARY's destination
+	dest := ctx.Session.Destination()
+	destBase64 := string(dest.PublicKey)
+
+	return sessionOK(destBase64), nil
+}
+
+// parseSubsessionOptions parses subsession options from SESSION ADD command.
+// Per SAMv3.md, options include PORT, HOST, FROM_PORT, TO_PORT, PROTOCOL,
+// LISTEN_PORT, LISTEN_PROTOCOL, HEADER.
+func (h *SessionHandler) parseSubsessionOptions(cmd *protocol.Command, style session.Style) (*session.SubsessionOptions, error) {
+	opts := &session.SubsessionOptions{}
+
+	// Parse PORT (required for DATAGRAM*/RAW, invalid for STREAM)
+	if portStr := cmd.Get("PORT"); portStr != "" {
+		if style == session.StyleStream {
+			return nil, fmt.Errorf("PORT is invalid for STYLE=STREAM")
+		}
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT: %w", err)
+		}
+		opts.Port = port
+	}
+
+	// Parse HOST (optional for DATAGRAM*/RAW, invalid for STREAM)
+	if host := cmd.Get("HOST"); host != "" {
+		if style == session.StyleStream {
+			return nil, fmt.Errorf("HOST is invalid for STYLE=STREAM")
+		}
+		opts.Host = host
+	} else if style != session.StyleStream {
+		opts.Host = "127.0.0.1" // Default per SAM spec
+	}
+
+	// Parse FROM_PORT (outbound traffic)
+	if portStr := cmd.Get("FROM_PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid FROM_PORT: %w", err)
+		}
+		opts.FromPort = port
+	}
+
+	// Parse TO_PORT (outbound traffic)
+	if portStr := cmd.Get("TO_PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TO_PORT: %w", err)
+		}
+		opts.ToPort = port
+	}
+
+	// Parse PROTOCOL (RAW only)
+	if protoStr := cmd.Get("PROTOCOL"); protoStr != "" {
+		if style != session.StyleRaw {
+			return nil, fmt.Errorf("PROTOCOL is only valid for STYLE=RAW")
+		}
+		proto, err := protocol.ValidateProtocolString(protoStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PROTOCOL: %w", err)
+		}
+		opts.Protocol = proto
+	} else if style == session.StyleRaw {
+		opts.Protocol = 18 // Default per SAM spec
+	}
+
+	// Parse LISTEN_PORT (inbound traffic)
+	// Default is FROM_PORT value
+	if portStr := cmd.Get("LISTEN_PORT"); portStr != "" {
+		port, err := protocol.ValidatePortString(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid LISTEN_PORT: %w", err)
+		}
+		// For STREAM, only FROM_PORT value or 0 is allowed
+		if style == session.StyleStream && port != 0 && port != opts.FromPort {
+			return nil, fmt.Errorf("LISTEN_PORT must be 0 or FROM_PORT value for STYLE=STREAM")
+		}
+		opts.ListenPort = port
+	} else {
+		opts.ListenPort = opts.FromPort // Default per spec
+	}
+
+	// Parse LISTEN_PROTOCOL (RAW only)
+	// Default is PROTOCOL value; 6 (streaming) is disallowed
+	if protoStr := cmd.Get("LISTEN_PROTOCOL"); protoStr != "" {
+		if style != session.StyleRaw {
+			return nil, fmt.Errorf("LISTEN_PROTOCOL is only valid for STYLE=RAW")
+		}
+		proto, err := protocol.ValidateProtocolString(protoStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid LISTEN_PROTOCOL: %w", err)
+		}
+		if proto == 6 {
+			return nil, fmt.Errorf("LISTEN_PROTOCOL=6 (streaming) is disallowed for RAW")
+		}
+		opts.ListenProtocol = proto
+	} else if style == session.StyleRaw {
+		opts.ListenProtocol = opts.Protocol // Default per spec
+	}
+
+	// Parse HEADER (RAW only)
+	if headerStr := cmd.Get("HEADER"); headerStr != "" {
+		if style != session.StyleRaw {
+			return nil, fmt.Errorf("HEADER is only valid for STYLE=RAW")
+		}
+		opts.HeaderEnabled = (headerStr == "true")
+	}
+
+	return opts, nil
 }
 
 // sessionDuplicatedDest returns a DUPLICATED_DEST response.

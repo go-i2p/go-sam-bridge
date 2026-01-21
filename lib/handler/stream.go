@@ -253,10 +253,26 @@ func (h *StreamHandler) handleForward(ctx *Context, cmd *protocol.Command) (*pro
 }
 
 // lookupSession finds a session by ID from context or registry.
+// Per SAMv3.md, STREAM commands use the ID parameter to specify the session.
+// For PRIMARY sessions, the ID refers to a subsession created via SESSION ADD.
+// This function will:
+// 1. Check if the ID matches the bound session on this connection
+// 2. Check if the bound session is a PRIMARY and the ID matches a subsession
+// 3. Look up in the global registry
 func (h *StreamHandler) lookupSession(ctx *Context, id string) session.Session {
 	// First check if session is bound to this connection
-	if ctx.Session != nil && ctx.Session.ID() == id {
-		return ctx.Session
+	if ctx.Session != nil {
+		// Direct match with bound session
+		if ctx.Session.ID() == id {
+			return ctx.Session
+		}
+
+		// Check if bound session is a PRIMARY and id matches a subsession
+		if primary, ok := ctx.Session.(session.PrimarySession); ok {
+			if subsess := primary.Subsession(id); subsess != nil {
+				return subsess
+			}
+		}
 	}
 
 	// Otherwise lookup in registry

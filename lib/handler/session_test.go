@@ -899,3 +899,737 @@ func TestSessionErr(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", err.Error(), "test error")
 	}
 }
+
+// TestSessionHandler_HandleAdd tests SESSION ADD command handling.
+func TestSessionHandler_HandleAdd(t *testing.T) {
+	mockDest := &commondest.Destination{}
+	mockPrivKey := []byte("test-private-key")
+
+	successManager := &mockManager{
+		dest:        mockDest,
+		privateKey:  mockPrivKey,
+		pubEncoded:  "test-pub-base64",
+		privEncoded: "test-priv-base64",
+	}
+
+	// Create a PRIMARY session for testing
+	createPrimarySession := func() *session.PrimarySessionImpl {
+		dest := &session.Destination{
+			PublicKey:     []byte("test-pub-base64"),
+			PrivateKey:    []byte("test-priv-key"),
+			SignatureType: 7,
+		}
+		config := session.DefaultSessionConfig()
+		return session.NewPrimarySession("primary-1", dest, nil, config)
+	}
+
+	tests := []struct {
+		name        string
+		command     *protocol.Command
+		ctx         *Context
+		wantResult  string
+		wantMessage string
+	}{
+		{
+			name: "handshake not complete",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "sub-1",
+				},
+			},
+			ctx: &Context{
+				HandshakeComplete: false,
+			},
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "no session bound",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "sub-1",
+				},
+			},
+			ctx: &Context{
+				HandshakeComplete: true,
+				Session:           nil,
+			},
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "not a PRIMARY session",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "sub-1",
+				},
+			},
+			ctx: func() *Context {
+				// Create a non-PRIMARY session
+				dest := &session.Destination{
+					PublicKey:     []byte("test-pub-base64"),
+					PrivateKey:    []byte("test-priv-key"),
+					SignatureType: 7,
+				}
+				baseSession := session.NewBaseSession("stream-1", session.StyleStream, dest, nil, nil)
+				baseSession.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           baseSession,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "successful STREAM subsession",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":     "STREAM",
+					"ID":        "stream-sub",
+					"FROM_PORT": "1234",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultOK,
+		},
+		{
+			name: "successful DATAGRAM subsession with PORT/HOST",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":       "DATAGRAM",
+					"ID":          "datagram-sub",
+					"PORT":        "7655",
+					"HOST":        "localhost",
+					"LISTEN_PORT": "5000",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultOK,
+		},
+		{
+			name: "successful RAW subsession",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":           "RAW",
+					"ID":              "raw-sub",
+					"PORT":            "7656",
+					"PROTOCOL":        "18",
+					"LISTEN_PROTOCOL": "18",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultOK,
+		},
+		{
+			name: "reject PRIMARY style",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "PRIMARY",
+					"ID":    "sub-primary",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "reject MASTER style",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "MASTER",
+					"ID":    "sub-master",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "missing STYLE",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"ID": "sub-1",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "missing ID",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "ID with whitespace",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "sub with space",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "DESTINATION not allowed",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":       "STREAM",
+					"ID":          "sub-1",
+					"DESTINATION": "some-dest",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "PORT invalid for STREAM",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "stream-sub",
+					"PORT":  "7655",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "HOST invalid for STREAM",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE": "STREAM",
+					"ID":    "stream-sub",
+					"HOST":  "localhost",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "PROTOCOL invalid for DATAGRAM",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":    "DATAGRAM",
+					"ID":       "datagram-sub",
+					"PORT":     "7655",
+					"PROTOCOL": "18",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "RAW with LISTEN_PROTOCOL=6 is disallowed",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":           "RAW",
+					"ID":              "raw-sub",
+					"PORT":            "7656",
+					"LISTEN_PROTOCOL": "6",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "duplicate subsession ID",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "ADD",
+				Options: map[string]string{
+					"STYLE":     "STREAM",
+					"ID":        "existing-sub",
+					"FROM_PORT": "2000",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimarySession()
+				primary.SetStatus(session.StatusActive)
+				// Add a subsession first
+				primary.AddSubsession("existing-sub", session.StyleStream, session.SubsessionOptions{
+					FromPort:   1000,
+					ListenPort: 1000,
+				})
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultDuplicatedID,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := NewSessionHandler(successManager)
+			resp, err := handler.Handle(tt.ctx, tt.command)
+
+			if err != nil {
+				t.Fatalf("Handle() error = %v", err)
+			}
+
+			if resp == nil {
+				t.Fatal("Handle() response = nil")
+			}
+
+			got := resp.String()
+			if !strings.Contains(got, "RESULT="+tt.wantResult) {
+				t.Errorf("Handle() = %q, want RESULT=%s", got, tt.wantResult)
+			}
+		})
+	}
+}
+
+// TestSessionHandler_HandleRemove tests SESSION REMOVE command handling.
+func TestSessionHandler_HandleRemove(t *testing.T) {
+	mockDest := &commondest.Destination{}
+	mockPrivKey := []byte("test-private-key")
+
+	successManager := &mockManager{
+		dest:        mockDest,
+		privateKey:  mockPrivKey,
+		pubEncoded:  "test-pub-base64",
+		privEncoded: "test-priv-base64",
+	}
+
+	// Create a PRIMARY session with a subsession for testing
+	createPrimaryWithSubsession := func() *session.PrimarySessionImpl {
+		dest := &session.Destination{
+			PublicKey:     []byte("test-pub-base64"),
+			PrivateKey:    []byte("test-priv-key"),
+			SignatureType: 7,
+		}
+		config := session.DefaultSessionConfig()
+		primary := session.NewPrimarySession("primary-1", dest, nil, config)
+		primary.SetStatus(session.StatusActive)
+		primary.AddSubsession("sub-1", session.StyleStream, session.SubsessionOptions{
+			FromPort:   1234,
+			ListenPort: 1234,
+		})
+		return primary
+	}
+
+	tests := []struct {
+		name       string
+		command    *protocol.Command
+		ctx        *Context
+		wantResult string
+	}{
+		{
+			name: "handshake not complete",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "REMOVE",
+				Options: map[string]string{
+					"ID": "sub-1",
+				},
+			},
+			ctx: &Context{
+				HandshakeComplete: false,
+			},
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "no session bound",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "REMOVE",
+				Options: map[string]string{
+					"ID": "sub-1",
+				},
+			},
+			ctx: &Context{
+				HandshakeComplete: true,
+				Session:           nil,
+			},
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "not a PRIMARY session",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "REMOVE",
+				Options: map[string]string{
+					"ID": "sub-1",
+				},
+			},
+			ctx: func() *Context {
+				dest := &session.Destination{
+					PublicKey:     []byte("test-pub-base64"),
+					PrivateKey:    []byte("test-priv-key"),
+					SignatureType: 7,
+				}
+				baseSession := session.NewBaseSession("stream-1", session.StyleStream, dest, nil, nil)
+				baseSession.SetStatus(session.StatusActive)
+				return &Context{
+					HandshakeComplete: true,
+					Session:           baseSession,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "successful remove",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "REMOVE",
+				Options: map[string]string{
+					"ID": "sub-1",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimaryWithSubsession()
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultOK,
+		},
+		{
+			name: "missing ID",
+			command: &protocol.Command{
+				Verb:    "SESSION",
+				Action:  "REMOVE",
+				Options: map[string]string{},
+			},
+			ctx: func() *Context {
+				primary := createPrimaryWithSubsession()
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+		{
+			name: "subsession not found",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "REMOVE",
+				Options: map[string]string{
+					"ID": "nonexistent",
+				},
+			},
+			ctx: func() *Context {
+				primary := createPrimaryWithSubsession()
+				return &Context{
+					HandshakeComplete: true,
+					Session:           primary,
+				}
+			}(),
+			wantResult: protocol.ResultI2PError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := NewSessionHandler(successManager)
+			resp, err := handler.Handle(tt.ctx, tt.command)
+
+			if err != nil {
+				t.Fatalf("Handle() error = %v", err)
+			}
+
+			if resp == nil {
+				t.Fatal("Handle() response = nil")
+			}
+
+			got := resp.String()
+			if !strings.Contains(got, "RESULT="+tt.wantResult) {
+				t.Errorf("Handle() = %q, want RESULT=%s", got, tt.wantResult)
+			}
+		})
+	}
+}
+
+// TestParseSubsessionOptions tests subsession options parsing.
+func TestParseSubsessionOptions(t *testing.T) {
+	handler := NewSessionHandler(nil)
+
+	tests := []struct {
+		name      string
+		command   *protocol.Command
+		style     session.Style
+		wantErr   bool
+		checkOpts func(t *testing.T, opts *session.SubsessionOptions)
+	}{
+		{
+			name: "STREAM with FROM_PORT",
+			command: &protocol.Command{
+				Options: map[string]string{
+					"FROM_PORT": "1234",
+				},
+			},
+			style:   session.StyleStream,
+			wantErr: false,
+			checkOpts: func(t *testing.T, opts *session.SubsessionOptions) {
+				if opts.FromPort != 1234 {
+					t.Errorf("FromPort = %d, want 1234", opts.FromPort)
+				}
+				if opts.ListenPort != 1234 {
+					t.Errorf("ListenPort = %d, want 1234 (defaulted from FROM_PORT)", opts.ListenPort)
+				}
+			},
+		},
+		{
+			name: "RAW with all options",
+			command: &protocol.Command{
+				Options: map[string]string{
+					"PORT":            "7655",
+					"HOST":            "192.168.1.1",
+					"FROM_PORT":       "1000",
+					"TO_PORT":         "2000",
+					"PROTOCOL":        "18",
+					"LISTEN_PORT":     "3000",
+					"LISTEN_PROTOCOL": "18",
+					"HEADER":          "true",
+				},
+			},
+			style:   session.StyleRaw,
+			wantErr: false,
+			checkOpts: func(t *testing.T, opts *session.SubsessionOptions) {
+				if opts.Port != 7655 {
+					t.Errorf("Port = %d, want 7655", opts.Port)
+				}
+				if opts.Host != "192.168.1.1" {
+					t.Errorf("Host = %s, want 192.168.1.1", opts.Host)
+				}
+				if opts.FromPort != 1000 {
+					t.Errorf("FromPort = %d, want 1000", opts.FromPort)
+				}
+				if opts.ToPort != 2000 {
+					t.Errorf("ToPort = %d, want 2000", opts.ToPort)
+				}
+				if opts.Protocol != 18 {
+					t.Errorf("Protocol = %d, want 18", opts.Protocol)
+				}
+				if opts.ListenPort != 3000 {
+					t.Errorf("ListenPort = %d, want 3000", opts.ListenPort)
+				}
+				if opts.ListenProtocol != 18 {
+					t.Errorf("ListenProtocol = %d, want 18", opts.ListenProtocol)
+				}
+				if !opts.HeaderEnabled {
+					t.Error("HeaderEnabled = false, want true")
+				}
+			},
+		},
+		{
+			name: "DATAGRAM with default HOST",
+			command: &protocol.Command{
+				Options: map[string]string{
+					"PORT": "7655",
+				},
+			},
+			style:   session.StyleDatagram,
+			wantErr: false,
+			checkOpts: func(t *testing.T, opts *session.SubsessionOptions) {
+				if opts.Host != "127.0.0.1" {
+					t.Errorf("Host = %s, want 127.0.0.1 (default)", opts.Host)
+				}
+			},
+		},
+		{
+			name: "invalid STREAM LISTEN_PORT",
+			command: &protocol.Command{
+				Options: map[string]string{
+					"FROM_PORT":   "1234",
+					"LISTEN_PORT": "5678", // Must be 0 or FROM_PORT for STREAM
+				},
+			},
+			style:   session.StyleStream,
+			wantErr: true,
+		},
+		{
+			name: "STREAM LISTEN_PORT=0 is allowed",
+			command: &protocol.Command{
+				Options: map[string]string{
+					"FROM_PORT":   "1234",
+					"LISTEN_PORT": "0",
+				},
+			},
+			style:   session.StyleStream,
+			wantErr: false,
+			checkOpts: func(t *testing.T, opts *session.SubsessionOptions) {
+				if opts.ListenPort != 0 {
+					t.Errorf("ListenPort = %d, want 0", opts.ListenPort)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, err := handler.parseSubsessionOptions(tt.command, tt.style)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("parseSubsessionOptions() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseSubsessionOptions() error = %v", err)
+			}
+
+			if tt.checkOpts != nil {
+				tt.checkOpts(t, opts)
+			}
+		})
+	}
+}
+
+// TestSessionHandler_UnknownAction tests unknown SESSION action handling.
+func TestSessionHandler_UnknownAction(t *testing.T) {
+	handler := NewSessionHandler(nil)
+	ctx := &Context{
+		HandshakeComplete: true,
+	}
+	cmd := &protocol.Command{
+		Verb:   "SESSION",
+		Action: "UNKNOWN",
+	}
+
+	resp, err := handler.Handle(ctx, cmd)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	got := resp.String()
+	if !strings.Contains(got, "RESULT=I2P_ERROR") {
+		t.Errorf("Handle() = %q, want RESULT=I2P_ERROR", got)
+	}
+	if !strings.Contains(got, "unknown SESSION action") {
+		t.Errorf("Handle() = %q, want 'unknown SESSION action' in message", got)
+	}
+}
