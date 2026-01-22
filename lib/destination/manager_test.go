@@ -33,6 +33,20 @@ func TestManagerImpl_Generate(t *testing.T) {
 		}
 	})
 
+	t.Run("Ed25519 key sizes correct", func(t *testing.T) {
+		// Verify private key contains both encryption (32B) and signing (64B) keys
+		_, privateKey, err := m.Generate(SigTypeEd25519)
+		if err != nil {
+			t.Fatalf("Generate(Ed25519) error = %v", err)
+		}
+		// Expected: 32 bytes X25519 + 64 bytes Ed25519 = 96 bytes total
+		expectedSize := 32 + 64 // X25519 encryption + Ed25519 signing
+		if len(privateKey) != expectedSize {
+			t.Errorf("Private key size = %d bytes, want %d bytes (32 X25519 + 64 Ed25519)",
+				len(privateKey), expectedSize)
+		}
+	})
+
 	t.Run("unsupported signature type DSA", func(t *testing.T) {
 		_, _, err := m.Generate(SigTypeDSA_SHA1)
 		if err == nil {

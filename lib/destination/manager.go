@@ -85,6 +85,12 @@ var (
 
 // Generate creates a new destination with the specified signature type.
 // Uses go-i2p/keys.DestinationKeyStore for proper Ed25519/X25519 key generation.
+//
+// Returns the destination and complete private key bytes in SAM PrivateKeyFile format:
+//   - Encryption private key (32 bytes for X25519)
+//   - Signing private key (64 bytes for Ed25519)
+//
+// Per SAMv3.md DEST GENERATE specification.
 func (m *ManagerImpl) Generate(signatureType int) (*commondest.Destination, []byte, error) {
 	if !IsValidSignatureType(signatureType) {
 		return nil, nil, ErrUnsupportedSignatureType
@@ -104,20 +110,32 @@ func (m *ManagerImpl) Generate(signatureType int) (*commondest.Destination, []by
 	dest := keyStore.Destination()
 
 	// Get private keys for SAM protocol
-	// EncryptionPrivateKey returns types.PrivateEncryptionKey which has Bytes()
-	// SigningPrivateKey returns types.SigningPrivateKey which has Len() but not Bytes()
-	// We need to get the raw bytes from the signing key via the signer
+	// PrivateKeyFile format: encryption_private_key || signing_private_key
 	encPrivKey := keyStore.EncryptionPrivateKey()
+	encPrivKeyBytes := encPrivKey.Bytes() // 32 bytes for X25519
 
-	// For the signing private key, we need to create a signer and extract bytes
-	// The Ed25519PrivateKey type has a Bytes() method, but the interface doesn't expose it
-	// We'll store just the encryption private key for now, as signing is done internally
-	encPrivKeyBytes := encPrivKey.Bytes()
+	// Get signing private key bytes
+	// The SigningPrivateKey interface doesn't expose Bytes(), but the concrete
+	// Ed25519PrivateKey type implements types.PrivateKey which has Bytes()
+	sigPrivKey := keyStore.SigningPrivateKey()
 
-	// The signing private key bytes are embedded in the Ed25519 key (64 bytes)
-	// For now, we just return the encryption private key
-	// TODO: Add proper signing key serialization when needed
-	return dest, encPrivKeyBytes, nil
+	// Type assert to get bytes - Ed25519PrivateKey implements PrivateKey.Bytes()
+	type bytesProvider interface {
+		Bytes() []byte
+	}
+	sigKeyWithBytes, ok := sigPrivKey.(bytesProvider)
+	if !ok {
+		return nil, nil, errors.New("signing private key does not provide Bytes() method")
+	}
+	sigPrivKeyBytes := sigKeyWithBytes.Bytes() // 64 bytes for Ed25519
+
+	// Combine: encryption_private_key || signing_private_key
+	// This is the SAM PrivateKeyFile format per SAMv3.md
+	privateKeyBytes := make([]byte, 0, len(encPrivKeyBytes)+len(sigPrivKeyBytes))
+	privateKeyBytes = append(privateKeyBytes, encPrivKeyBytes...)
+	privateKeyBytes = append(privateKeyBytes, sigPrivKeyBytes...)
+
+	return dest, privateKeyBytes, nil
 }
 
 // Parse decodes a Base64 private key string into destination and private key bytes.
