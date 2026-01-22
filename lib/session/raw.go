@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net"
 	"sync"
+
+	"github.com/go-i2p/go-datagrams"
 )
 
 // RawSessionImpl implements the RawSession interface.
@@ -46,6 +48,10 @@ type RawSessionImpl struct {
 
 	// PacketConn for sending/receiving UDP datagrams
 	udpConn net.PacketConn
+
+	// datagramConn is the go-datagrams connection for I2CP datagram operations.
+	// Must be set via SetDatagramConn() before Send() can be used.
+	datagramConn *datagrams.DatagramConn
 
 	// Context for cancellation
 	ctx    context.Context
@@ -137,6 +143,7 @@ func (r *RawSessionImpl) Send(dest string, data []byte, opts RawSendOptions) err
 		r.mu.RUnlock()
 		return ErrSessionNotActive
 	}
+	datagramConn := r.datagramConn
 	r.mu.RUnlock()
 
 	// Validate data
@@ -158,15 +165,20 @@ func (r *RawSessionImpl) Send(dest string, data []byte, opts RawSendOptions) err
 		return ErrInvalidProtocol
 	}
 
-	// TODO: Integrate with go-datagrams library to actually send the datagram.
-	// This requires:
-	// 1. Resolving the destination (base64 or hostname)
-	// 2. Constructing the raw datagram with proper I2CP framing
-	// 3. Sending via I2CP session
-	//
-	// For now, return ErrNotImplemented to indicate the stub.
-	// This will be fully implemented when integrating go-datagrams.
-	return ErrRawSendNotImplemented
+	// Determine target port (opts override default)
+	toPort := opts.ToPort
+	if toPort == 0 {
+		toPort = 0 // Default to port 0 if not specified
+	}
+
+	// Use go-datagrams DatagramConn if configured
+	if datagramConn == nil {
+		return ErrRawSendNotImplemented
+	}
+
+	// Send via DatagramConn using SendTo
+	// The DatagramConn handles I2CP protocol framing and destination resolution
+	return datagramConn.SendTo(data, dest, uint16(toPort))
 }
 
 // Receive returns a channel for incoming raw datagrams.
@@ -295,6 +307,24 @@ func (r *RawSessionImpl) SetUDPConn(conn net.PacketConn) {
 	r.udpConn = conn
 }
 
+// SetDatagramConn sets the go-datagrams DatagramConn for I2CP datagram operations.
+// This must be called before Send() can be used.
+// The DatagramConn should be created using datagrams.NewDatagramConnWithProtocol()
+// with protocol datagrams.ProtocolRaw (18).
+func (r *RawSessionImpl) SetDatagramConn(conn *datagrams.DatagramConn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.datagramConn = conn
+}
+
+// DatagramConn returns the go-datagrams DatagramConn for I2CP datagram operations.
+// Returns nil if not configured.
+func (r *RawSessionImpl) DatagramConn() *datagrams.DatagramConn {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.datagramConn
+}
+
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform RAW-specific cleanup.
 func (r *RawSessionImpl) Close() error {
@@ -322,6 +352,11 @@ func (r *RawSessionImpl) Close() error {
 	if r.udpConn != nil {
 		r.udpConn.Close()
 		r.udpConn = nil
+	}
+	// Close DatagramConn if configured
+	if r.datagramConn != nil {
+		r.datagramConn.Close()
+		r.datagramConn = nil
 	}
 	r.mu.Unlock()
 
@@ -378,9 +413,9 @@ func itoa(n int) string {
 // Raw datagrams can be up to 32768 bytes, but 11KB is recommended for reliability.
 const MaxRawDatagramSize = 32768
 
-// ErrRawSendNotImplemented indicates RAW SEND is not yet fully implemented.
-// This is a placeholder until go-datagrams integration is complete.
-var ErrRawSendNotImplemented = errors.New("RAW SEND not fully implemented: awaiting go-datagrams integration")
+// ErrRawSendNotImplemented indicates RAW SEND is not available.
+// This error is returned when Send() is called without a DatagramConn configured.
+var ErrRawSendNotImplemented = errors.New("RAW send not available: no DatagramConn configured - call SetDatagramConn()")
 
 // Ensure RawSessionImpl implements RawSession interface.
 var _ RawSession = (*RawSessionImpl)(nil)

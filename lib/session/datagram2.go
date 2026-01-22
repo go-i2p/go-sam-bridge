@@ -11,6 +11,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/go-i2p/go-datagrams"
 )
 
 // Datagram2SessionImpl implements the DatagramSession interface for DATAGRAM2 style.
@@ -41,6 +43,10 @@ type Datagram2SessionImpl struct {
 
 	// PacketConn for sending/receiving UDP datagrams
 	udpConn net.PacketConn
+
+	// datagramConn is the go-datagrams connection for sending datagrams.
+	// This wraps an I2CP session and handles protocol-specific envelope formatting.
+	datagramConn *datagrams.DatagramConn
 
 	// Context for cancellation
 	ctx    context.Context
@@ -130,6 +136,7 @@ func (d *Datagram2SessionImpl) Send(dest string, data []byte, opts DatagramSendO
 		d.mu.RUnlock()
 		return ErrSessionNotActive
 	}
+	datagramConn := d.datagramConn
 	d.mu.RUnlock()
 
 	// Validate payload size
@@ -140,14 +147,22 @@ func (d *Datagram2SessionImpl) Send(dest string, data []byte, opts DatagramSendO
 		return ErrPayloadTooLarge
 	}
 
-	// TODO: Integrate with go-datagrams library for actual I2P datagram sending.
-	// The go-datagrams library should handle:
-	// - Nonce generation for replay protection
-	// - Offline signature creation if configured
-	// - I2CP protocol 17 (repliable datagram) formatting
-	//
-	// For now, return a stub error indicating not yet implemented.
-	return ErrDatagram2SendNotImplemented
+	// Check if datagramConn is configured
+	if datagramConn == nil {
+		return ErrDatagram2SendNotImplemented
+	}
+
+	// Determine destination port (use ToPort if specified, otherwise 0)
+	toPort := uint16(opts.ToPort)
+
+	// Send the datagram using go-datagrams
+	// DATAGRAM2 uses ProtocolDatagram2 (19) for authenticated datagrams with replay prevention
+	err := datagramConn.SendTo(data, dest, toPort)
+	if err != nil {
+		return fmt.Errorf("failed to send datagram2: %w", err)
+	}
+
+	return nil
 }
 
 // Receive returns a channel for incoming datagrams.
@@ -297,6 +312,12 @@ func (d *Datagram2SessionImpl) Close() error {
 		d.udpConn = nil
 	}
 
+	// Close datagram connection if we own it
+	if d.datagramConn != nil {
+		d.datagramConn.Close()
+		d.datagramConn = nil
+	}
+
 	// Close receive channel
 	close(d.receiveChan)
 
@@ -305,6 +326,22 @@ func (d *Datagram2SessionImpl) Close() error {
 
 	// Close base session
 	return d.BaseSession.Close()
+}
+
+// SetDatagramConn sets the go-datagrams connection for sending datagrams.
+// This should be called during session setup after the I2CP session is established.
+// The DatagramConn should be created with ProtocolDatagram2 for DATAGRAM2 sessions.
+func (d *Datagram2SessionImpl) SetDatagramConn(conn *datagrams.DatagramConn) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.datagramConn = conn
+}
+
+// DatagramConn returns the go-datagrams connection, or nil if not configured.
+func (d *Datagram2SessionImpl) DatagramConn() *datagrams.DatagramConn {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.datagramConn
 }
 
 // startNonceCleanup starts a background goroutine to clean up expired nonces.
@@ -340,9 +377,10 @@ func (d *Datagram2SessionImpl) cleanupExpiredNonces() {
 
 // Error definitions for Datagram2Session.
 var (
-	// ErrDatagram2SendNotImplemented indicates the send operation is not yet implemented.
-	// TODO: Implement with go-datagrams library integration.
-	ErrDatagram2SendNotImplemented = errors.New("DATAGRAM2 send not implemented: pending go-datagrams integration")
+	// ErrDatagram2SendNotImplemented indicates DATAGRAM2 SEND is not available
+	// because no DatagramConn has been configured. The DatagramConn must be set
+	// via SetDatagramConn() after the I2CP session is established.
+	ErrDatagram2SendNotImplemented = errors.New("DATAGRAM2 SEND not available: DatagramConn not configured")
 
 	// ErrEmptyPayload indicates the datagram payload is empty.
 	ErrEmptyPayload = errors.New("datagram payload cannot be empty")

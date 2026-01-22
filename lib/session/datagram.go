@@ -6,8 +6,11 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
+
+	"github.com/go-i2p/go-datagrams"
 )
 
 // DatagramSessionImpl implements the DatagramSession interface.
@@ -37,6 +40,10 @@ type DatagramSessionImpl struct {
 
 	// PacketConn for sending/receiving UDP datagrams
 	udpConn net.PacketConn
+
+	// datagramConn is the go-datagrams connection for sending datagrams.
+	// This wraps an I2CP session and handles protocol-specific envelope formatting.
+	datagramConn *datagrams.DatagramConn
 
 	// Context for cancellation
 	ctx    context.Context
@@ -102,6 +109,7 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 		d.mu.RUnlock()
 		return ErrSessionNotActive
 	}
+	datagramConn := d.datagramConn
 	d.mu.RUnlock()
 
 	// Validate data
@@ -120,16 +128,22 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 		return ErrInvalidPort
 	}
 
-	// TODO: Integrate with go-datagrams library to actually send the datagram.
-	// This requires:
-	// 1. Resolving the destination (base64 or hostname)
-	// 2. Constructing the repliable datagram with proper I2CP framing
-	// 3. Signing the datagram with our private key
-	// 4. Sending via I2CP session
-	//
-	// For now, return ErrNotImplemented to indicate the stub.
-	// This will be fully implemented when integrating go-datagrams.
-	return ErrDatagramSendNotImplemented
+	// Check if datagramConn is configured
+	if datagramConn == nil {
+		return ErrDatagramSendNotImplemented
+	}
+
+	// Determine destination port (use ToPort if specified, otherwise 0)
+	toPort := uint16(opts.ToPort)
+
+	// Send the datagram using go-datagrams
+	// DATAGRAM uses ProtocolDatagram1 (17) for repliable authenticated datagrams
+	err := datagramConn.SendTo(data, dest, toPort)
+	if err != nil {
+		return fmt.Errorf("failed to send datagram: %w", err)
+	}
+
+	return nil
 }
 
 // Receive returns a channel for incoming repliable datagrams.
@@ -254,6 +268,22 @@ func (d *DatagramSessionImpl) SetUDPConn(conn net.PacketConn) {
 	d.udpConn = conn
 }
 
+// SetDatagramConn sets the go-datagrams connection for sending datagrams.
+// This should be called during session setup after the I2CP session is established.
+// The DatagramConn should be created with ProtocolDatagram1 for DATAGRAM sessions.
+func (d *DatagramSessionImpl) SetDatagramConn(conn *datagrams.DatagramConn) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.datagramConn = conn
+}
+
+// DatagramConn returns the go-datagrams connection, or nil if not configured.
+func (d *DatagramSessionImpl) DatagramConn() *datagrams.DatagramConn {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.datagramConn
+}
+
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform DATAGRAM-specific cleanup.
 func (d *DatagramSessionImpl) Close() error {
@@ -282,6 +312,11 @@ func (d *DatagramSessionImpl) Close() error {
 		d.udpConn.Close()
 		d.udpConn = nil
 	}
+	// Close datagram connection if we own it
+	if d.datagramConn != nil {
+		d.datagramConn.Close()
+		d.datagramConn = nil
+	}
 	d.mu.Unlock()
 
 	// Close base session (control connection) - this sets status to CLOSED
@@ -293,9 +328,10 @@ func (d *DatagramSessionImpl) Close() error {
 // For reliability, staying under 11KB is recommended.
 const MaxDatagramSize = 31744
 
-// ErrDatagramSendNotImplemented indicates DATAGRAM SEND is not yet fully implemented.
-// This is a placeholder until go-datagrams integration is complete.
-var ErrDatagramSendNotImplemented = errors.New("DATAGRAM SEND not fully implemented: awaiting go-datagrams integration")
+// ErrDatagramSendNotImplemented indicates DATAGRAM SEND is not available
+// because no DatagramConn has been configured. The DatagramConn must be set
+// via SetDatagramConn() after the I2CP session is established.
+var ErrDatagramSendNotImplemented = errors.New("DATAGRAM SEND not available: DatagramConn not configured")
 
 // Ensure DatagramSessionImpl implements DatagramSession interface.
 var _ DatagramSession = (*DatagramSessionImpl)(nil)

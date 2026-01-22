@@ -13,6 +13,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/go-i2p/go-datagrams"
 )
 
 // Datagram3SessionImpl implements the DatagramSession interface for DATAGRAM3 style.
@@ -52,6 +54,10 @@ type Datagram3SessionImpl struct {
 
 	// PacketConn for sending/receiving UDP datagrams
 	udpConn net.PacketConn
+
+	// datagramConn is the go-datagrams connection for sending datagrams.
+	// This wraps an I2CP session and handles protocol-specific envelope formatting.
+	datagramConn *datagrams.DatagramConn
 
 	// Context for cancellation
 	ctx    context.Context
@@ -133,6 +139,7 @@ func (d *Datagram3SessionImpl) Send(dest string, data []byte, opts DatagramSendO
 		d.mu.RUnlock()
 		return ErrSessionNotActive
 	}
+	datagramConn := d.datagramConn
 	d.mu.RUnlock()
 
 	// Validate payload size
@@ -143,13 +150,22 @@ func (d *Datagram3SessionImpl) Send(dest string, data []byte, opts DatagramSendO
 		return ErrPayloadTooLarge
 	}
 
-	// TODO: Integrate with go-datagrams library for actual I2P datagram sending.
-	// The go-datagrams library should handle:
-	// - DATAGRAM3-specific I2CP format (hash-based source)
-	// - I2CP protocol 17 formatting without authentication
-	//
-	// For now, return a stub error indicating not yet implemented.
-	return ErrDatagram3SendNotImplemented
+	// Check if datagramConn is configured
+	if datagramConn == nil {
+		return ErrDatagram3SendNotImplemented
+	}
+
+	// Determine destination port (use ToPort if specified, otherwise 0)
+	toPort := uint16(opts.ToPort)
+
+	// Send the datagram using go-datagrams
+	// DATAGRAM3 uses ProtocolDatagram3 (20) for repliable unauthenticated datagrams
+	err := datagramConn.SendTo(data, dest, toPort)
+	if err != nil {
+		return fmt.Errorf("failed to send datagram3: %w", err)
+	}
+
+	return nil
 }
 
 // Receive returns a channel for incoming datagrams.
@@ -251,6 +267,12 @@ func (d *Datagram3SessionImpl) Close() error {
 		d.udpConn = nil
 	}
 
+	// Close datagram connection if we own it
+	if d.datagramConn != nil {
+		d.datagramConn.Close()
+		d.datagramConn = nil
+	}
+
 	// Close receive channel
 	close(d.receiveChan)
 
@@ -259,6 +281,22 @@ func (d *Datagram3SessionImpl) Close() error {
 
 	// Close base session
 	return d.BaseSession.Close()
+}
+
+// SetDatagramConn sets the go-datagrams connection for sending datagrams.
+// This should be called during session setup after the I2CP session is established.
+// The DatagramConn should be created with ProtocolDatagram3 for DATAGRAM3 sessions.
+func (d *Datagram3SessionImpl) SetDatagramConn(conn *datagrams.DatagramConn) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.datagramConn = conn
+}
+
+// DatagramConn returns the go-datagrams connection, or nil if not configured.
+func (d *Datagram3SessionImpl) DatagramConn() *datagrams.DatagramConn {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.datagramConn
 }
 
 // HashToB32Address converts a 44-byte base64-encoded hash (as received in
@@ -328,9 +366,10 @@ func ValidateHash(hash string) bool {
 
 // Error definitions for Datagram3Session.
 var (
-	// ErrDatagram3SendNotImplemented indicates the send operation is not yet implemented.
-	// TODO: Implement with go-datagrams library integration.
-	ErrDatagram3SendNotImplemented = errors.New("DATAGRAM3 send not implemented: pending go-datagrams integration")
+	// ErrDatagram3SendNotImplemented indicates DATAGRAM3 SEND is not available
+	// because no DatagramConn has been configured. The DatagramConn must be set
+	// via SetDatagramConn() after the I2CP session is established.
+	ErrDatagram3SendNotImplemented = errors.New("DATAGRAM3 SEND not available: DatagramConn not configured")
 
 	// ErrInvalidHashLength indicates the hash is not the expected 44-byte base64 size.
 	ErrInvalidHashLength = errors.New("invalid hash length: expected 44-byte base64 (32 bytes binary)")
