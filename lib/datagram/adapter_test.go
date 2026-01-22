@@ -167,7 +167,7 @@ func createTestSession(t *testing.T, client *go_i2cp.Client) *go_i2cp.Session {
 // TestIntegration_NewAdapter tests creating a new adapter with a real DatagramConn.
 func TestIntegration_NewAdapter(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -203,7 +203,7 @@ func TestIntegration_NewAdapter(t *testing.T) {
 // TestIntegration_Adapter_Protocol_Raw tests Raw protocol type.
 func TestIntegration_Adapter_Protocol_Raw(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -231,7 +231,7 @@ func TestIntegration_Adapter_Protocol_Raw(t *testing.T) {
 // TestIntegration_Adapter_Protocol_Datagram3 tests Datagram3 protocol type.
 func TestIntegration_Adapter_Protocol_Datagram3(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -259,7 +259,7 @@ func TestIntegration_Adapter_Protocol_Datagram3(t *testing.T) {
 // TestIntegration_Adapter_Close tests that Close releases resources.
 func TestIntegration_Adapter_Close(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -297,7 +297,7 @@ func TestIntegration_Adapter_Close(t *testing.T) {
 // TestIntegration_Adapter_MaxPayloadSize tests payload size limits.
 func TestIntegration_Adapter_MaxPayloadSize(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -332,7 +332,7 @@ func TestIntegration_Adapter_MaxPayloadSize(t *testing.T) {
 // TestIntegration_Adapter_LocalAddr tests local address retrieval.
 func TestIntegration_Adapter_LocalAddr(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -367,7 +367,7 @@ func TestIntegration_Adapter_LocalAddr(t *testing.T) {
 // TestIntegration_Adapter_SendTo tests sending a datagram.
 func TestIntegration_Adapter_SendTo(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -408,7 +408,7 @@ func TestIntegration_Adapter_SendTo(t *testing.T) {
 // TestIntegration_Adapter_SendTo_ClosedAdapter tests sending on closed adapter.
 func TestIntegration_Adapter_SendTo_ClosedAdapter(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -444,7 +444,7 @@ func TestIntegration_Adapter_SendTo_ClosedAdapter(t *testing.T) {
 // TestIntegration_Adapter_SendToWithOptions tests sending with SAM 3.3 options.
 func TestIntegration_Adapter_SendToWithOptions(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -486,7 +486,7 @@ func TestIntegration_Adapter_SendToWithOptions(t *testing.T) {
 // TestIntegration_Adapter_SendToWithOptions_NilOptions tests sending with nil options.
 func TestIntegration_Adapter_SendToWithOptions_NilOptions(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
@@ -520,7 +520,7 @@ func TestIntegration_Adapter_SendToWithOptions_NilOptions(t *testing.T) {
 // TestIntegration_NewAdapter_ClosedConn tests that closed conn is rejected.
 func TestIntegration_NewAdapter_ClosedConn(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Skipping integration test in short mode (requires I2P router; blocked by BUG-002 deadlock)")
+		t.Skip("Skipping integration test in short mode (requires I2P router)")
 	}
 
 	client := createTestClient(t)
