@@ -149,6 +149,83 @@ func TestHelpHandler_Handle(t *testing.T) {
 	if !strings.Contains(respStr, "SAM") {
 		t.Errorf("response = %q, want to contain SAM", respStr)
 	}
+
+	// Verify all implemented commands are listed in the help response
+	expectedCommands := []string{
+		"HELLO VERSION",
+		"DEST GENERATE",
+		"SESSION CREATE",
+		"SESSION ADD",
+		"SESSION REMOVE",
+		"STREAM CONNECT",
+		"STREAM ACCEPT",
+		"STREAM FORWARD",
+		"DATAGRAM SEND",
+		"RAW SEND",
+		"NAMING LOOKUP",
+		"PING",
+		"PONG",
+		"AUTH ADD",
+		"AUTH REMOVE",
+		"AUTH ENABLE",
+		"AUTH DISABLE",
+		"QUIT",
+		"STOP",
+		"EXIT",
+		"HELP",
+	}
+
+	for _, cmd := range expectedCommands {
+		if !strings.Contains(respStr, cmd) {
+			t.Errorf("response missing command %q in %q", cmd, respStr)
+		}
+	}
+}
+
+// TestSamCommandsCompleteness verifies that the samCommands slice contains all expected commands.
+func TestSamCommandsCompleteness(t *testing.T) {
+	expectedCommands := []string{
+		"HELLO VERSION",
+		"DEST GENERATE",
+		"SESSION CREATE",
+		"SESSION ADD",
+		"SESSION REMOVE",
+		"STREAM CONNECT",
+		"STREAM ACCEPT",
+		"STREAM FORWARD",
+		"DATAGRAM SEND",
+		"RAW SEND",
+		"NAMING LOOKUP",
+		"PING",
+		"PONG",
+		"AUTH ADD",
+		"AUTH REMOVE",
+		"AUTH ENABLE",
+		"AUTH DISABLE",
+		"QUIT",
+		"STOP",
+		"EXIT",
+		"HELP",
+	}
+
+	// Check samCommands contains all expected commands
+	for _, expected := range expectedCommands {
+		found := false
+		for _, actual := range samCommands {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("samCommands missing command %q", expected)
+		}
+	}
+
+	// Check samCommands has the expected length
+	if len(samCommands) != len(expectedCommands) {
+		t.Errorf("samCommands has %d commands, want %d", len(samCommands), len(expectedCommands))
+	}
 }
 
 func TestRegisterHelpHandler(t *testing.T) {

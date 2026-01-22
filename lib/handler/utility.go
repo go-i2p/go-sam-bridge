@@ -68,13 +68,48 @@ func NewHelpHandler() *HelpHandler {
 	return &HelpHandler{}
 }
 
+// samCommands lists all implemented SAM 3.3 commands.
+// This is used by the HELP handler to provide complete command documentation.
+var samCommands = []string{
+	"HELLO VERSION",
+	"DEST GENERATE",
+	"SESSION CREATE",
+	"SESSION ADD",
+	"SESSION REMOVE",
+	"STREAM CONNECT",
+	"STREAM ACCEPT",
+	"STREAM FORWARD",
+	"DATAGRAM SEND",
+	"RAW SEND",
+	"NAMING LOOKUP",
+	"PING",
+	"PONG",
+	"AUTH ADD",
+	"AUTH REMOVE",
+	"AUTH ENABLE",
+	"AUTH DISABLE",
+	"QUIT",
+	"STOP",
+	"EXIT",
+	"HELP",
+}
+
 // Handle processes a HELP command and returns usage information.
+// Per SAM 3.2, returns a list of all implemented SAM commands.
 func (h *HelpHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Return a simple help message
+	// Build command list string
+	cmdList := ""
+	for i, c := range samCommands {
+		if i > 0 {
+			cmdList += ", "
+		}
+		cmdList += c
+	}
+
 	return protocol.NewResponse("HELP").
 		WithAction("REPLY").
 		WithResult("OK").
-		WithMessage("SAM 3.3 commands: HELLO, DEST, SESSION, STREAM, NAMING, PING, QUIT"), nil
+		WithMessage("SAM 3.3 commands: " + cmdList), nil
 }
 
 // RegisterHelpHandler registers the HELP handler with a router.
