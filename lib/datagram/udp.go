@@ -247,10 +247,32 @@ func (l *UDPListener) routeToRawSession(sess session.Session, header *DatagramHe
 }
 
 // routeToDatagramSession routes the datagram to a DATAGRAM session for sending.
-// TODO: Implement when DatagramSession is available in Phase 4.
+// Uses go-datagrams integration via SessionDatagramManager.
+//
+// Per SAMv3.md: DATAGRAM sessions use repliable datagrams which include
+// the sender's destination and signature, enabling replies.
 func (l *UDPListener) routeToDatagramSession(sess session.Session, header *DatagramHeader, payload []byte) {
-	// Stub for Phase 4 - DATAGRAM sessions
-	// Will be implemented when lib/session/datagram.go is complete
+	datagramSess, ok := sess.(session.DatagramSession)
+	if !ok {
+		return
+	}
+
+	// Build send options from header including SAM 3.3 options
+	opts := session.DatagramSendOptions{
+		FromPort:     header.FromPort,
+		ToPort:       header.ToPort,
+		SendTags:     header.SendTags,
+		TagThreshold: header.TagThreshold,
+		Expires:      header.Expires,
+	}
+	if header.SendLeaseSet != nil {
+		opts.SendLeaseset = *header.SendLeaseSet
+		opts.SendLeasesetSet = true
+	}
+
+	// Send the datagram
+	// Error is silently ignored per SAM UDP behavior (no response channel)
+	_ = datagramSess.Send(header.Destination, payload, opts)
 }
 
 // Close stops the UDP listener and releases resources.
