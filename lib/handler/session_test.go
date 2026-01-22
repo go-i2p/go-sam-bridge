@@ -1382,7 +1382,6 @@ func TestSessionHandler_HandleAdd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := NewSessionHandler(successManager)
 			resp, err := handler.Handle(tt.ctx, tt.command)
-
 			if err != nil {
 				t.Fatalf("Handle() error = %v", err)
 			}
@@ -1545,7 +1544,6 @@ func TestSessionHandler_HandleRemove(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := NewSessionHandler(successManager)
 			resp, err := handler.Handle(tt.ctx, tt.command)
-
 			if err != nil {
 				t.Fatalf("Handle() error = %v", err)
 			}

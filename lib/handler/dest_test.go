@@ -292,9 +292,9 @@ func TestParseSignatureType(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "empty defaults to 0",
+			name:    "empty defaults to Ed25519 (security deviation from spec)",
 			options: map[string]string{},
-			want:    0,
+			want:    7, // Ed25519, not DSA_SHA1 (0) - intentional spec deviation
 		},
 		{
 			name:    "numeric 0",

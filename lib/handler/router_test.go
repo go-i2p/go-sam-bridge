@@ -244,7 +244,6 @@ func TestRouter_Handle_Unknown(t *testing.T) {
 
 	cmd := &protocol.Command{Verb: "UNKNOWN", Action: "COMMAND"}
 	resp, err := r.Handle(nil, cmd)
-
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -267,7 +266,6 @@ func TestRouter_Handle_EmptyVerb(t *testing.T) {
 
 	cmd := &protocol.Command{Verb: "", Action: ""}
 	resp, err := r.Handle(nil, cmd)
-
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

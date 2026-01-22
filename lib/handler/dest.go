@@ -70,13 +70,18 @@ func (h *DestHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Res
 }
 
 // parseSignatureType extracts and validates the SIGNATURE_TYPE option.
-// Returns default (DSA_SHA1 = 0) if not specified, per SAM spec.
+// Returns default Ed25519 (7) if not specified.
+//
+// NOTE: SAM spec defaults to DSA_SHA1 (0), but go-sam-bridge intentionally
+// deviates from spec to use modern cryptography. DSA_SHA1 is deprecated and
+// insecure. All clients are strongly recommended to use Ed25519 anyway.
+// This is a security-conscious deviation from the specification.
 func parseSignatureType(cmd *protocol.Command) (int, error) {
 	sigTypeStr := cmd.Get("SIGNATURE_TYPE")
 	if sigTypeStr == "" {
-		// Default is DSA_SHA1 (0) per spec, but this is deprecated
-		// Clients should always specify SIGNATURE_TYPE=7
-		return protocol.SigTypeDSA_SHA1, nil
+		// go-sam-bridge defaults to Ed25519 for security
+		// This deviates from SAM spec (which defaults to deprecated DSA_SHA1)
+		return protocol.SigTypeEd25519, nil
 	}
 
 	// Try numeric value first
