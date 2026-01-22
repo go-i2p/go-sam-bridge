@@ -138,6 +138,104 @@ func TestBuildFromSAMConfig(t *testing.T) {
 			t.Error("expected fastReceive to be true")
 		}
 	})
+
+	t.Run("includes backup quantities when set", func(t *testing.T) {
+		config := &session.SessionConfig{
+			InboundQuantity:        3,
+			OutboundQuantity:       3,
+			InboundLength:          3,
+			OutboundLength:         3,
+			InboundBackupQuantity:  2,
+			OutboundBackupQuantity: 1,
+		}
+
+		opts := BuildFromSAMConfig(config)
+
+		if opts.GetInt("inbound.backupQuantity") != 2 {
+			t.Errorf("expected inbound.backupQuantity 2, got %d", opts.GetInt("inbound.backupQuantity"))
+		}
+		if opts.GetInt("outbound.backupQuantity") != 1 {
+			t.Errorf("expected outbound.backupQuantity 1, got %d", opts.GetInt("outbound.backupQuantity"))
+		}
+	})
+
+	t.Run("includes idle reduction options when set", func(t *testing.T) {
+		config := &session.SessionConfig{
+			InboundQuantity:    3,
+			OutboundQuantity:   3,
+			InboundLength:      3,
+			OutboundLength:     3,
+			ReduceIdleTime:     300, // 5 minutes
+			ReduceIdleQuantity: 1,
+		}
+
+		opts := BuildFromSAMConfig(config)
+
+		if !opts.GetBool("i2cp.reduceOnIdle") {
+			t.Error("expected reduceOnIdle to be true")
+		}
+		if opts.GetInt("i2cp.reduceIdleTime") != 300000 { // Converted to milliseconds
+			t.Errorf("expected reduceIdleTime 300000ms, got %d", opts.GetInt("i2cp.reduceIdleTime"))
+		}
+		if opts.GetInt("i2cp.reduceQuantity") != 1 {
+			t.Errorf("expected reduceQuantity 1, got %d", opts.GetInt("i2cp.reduceQuantity"))
+		}
+	})
+
+	t.Run("includes close on idle options when set", func(t *testing.T) {
+		config := &session.SessionConfig{
+			InboundQuantity:  3,
+			OutboundQuantity: 3,
+			InboundLength:    3,
+			OutboundLength:   3,
+			CloseIdleTime:    600, // 10 minutes
+		}
+
+		opts := BuildFromSAMConfig(config)
+
+		if !opts.GetBool("i2cp.closeOnIdle") {
+			t.Error("expected closeOnIdle to be true")
+		}
+		if opts.GetInt("i2cp.closeIdleTime") != 600000 { // Converted to milliseconds
+			t.Errorf("expected closeIdleTime 600000ms, got %d", opts.GetInt("i2cp.closeIdleTime"))
+		}
+	})
+
+	t.Run("excludes zero backup quantities", func(t *testing.T) {
+		config := &session.SessionConfig{
+			InboundQuantity:        3,
+			OutboundQuantity:       3,
+			InboundLength:          3,
+			OutboundLength:         3,
+			InboundBackupQuantity:  0, // Explicitly zero
+			OutboundBackupQuantity: 0,
+		}
+
+		opts := BuildFromSAMConfig(config)
+
+		if opts.Get("inbound.backupQuantity") != "" {
+			t.Errorf("expected no inbound.backupQuantity, got '%s'", opts.Get("inbound.backupQuantity"))
+		}
+		if opts.Get("outbound.backupQuantity") != "" {
+			t.Errorf("expected no outbound.backupQuantity, got '%s'", opts.Get("outbound.backupQuantity"))
+		}
+	})
+
+	t.Run("handles empty encryption types", func(t *testing.T) {
+		config := &session.SessionConfig{
+			InboundQuantity:  3,
+			OutboundQuantity: 3,
+			InboundLength:    3,
+			OutboundLength:   3,
+			EncryptionTypes:  []int{},
+		}
+
+		opts := BuildFromSAMConfig(config)
+
+		if opts.Get("i2cp.leaseSetEncType") != "" {
+			t.Errorf("expected no encryption type, got '%s'", opts.Get("i2cp.leaseSetEncType"))
+		}
+	})
 }
 
 func TestParseI2CPOptions(t *testing.T) {

@@ -1,6 +1,7 @@
 package i2cp
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -136,5 +137,153 @@ func TestClient_SetCallbacks(t *testing.T) {
 
 	if client.callbacks != callbacks {
 		t.Error("callbacks not set correctly")
+	}
+}
+
+func TestClient_Close_NotConnected(t *testing.T) {
+	client := NewClient(nil)
+
+	err := client.Close()
+	if err != nil {
+		t.Errorf("closing unconnected client should not error: %v", err)
+	}
+}
+
+func TestClient_Close_WithSessions(t *testing.T) {
+	client := NewClient(nil)
+	client.connected = true // Simulate connected state
+
+	// Register some sessions
+	sess1 := &I2CPSession{samSessionID: "session-1", active: true}
+	sess2 := &I2CPSession{samSessionID: "session-2", active: true}
+	client.RegisterSession("session-1", sess1)
+	client.RegisterSession("session-2", sess2)
+
+	err := client.Close()
+	if err != nil {
+		t.Errorf("close should not error: %v", err)
+	}
+
+	if client.connected {
+		t.Error("client should be disconnected after close")
+	}
+
+	// Verify sessions are removed
+	if len(client.sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(client.sessions))
+	}
+
+	// Verify sessions were closed
+	if sess1.active {
+		t.Error("session 1 should be inactive")
+	}
+	if sess2.active {
+		t.Error("session 2 should be inactive")
+	}
+}
+
+func TestClient_onConnect(t *testing.T) {
+	client := NewClient(nil)
+
+	// Test without callbacks - should not panic
+	client.onConnect(nil)
+
+	// Test with callback
+	called := false
+	client.SetCallbacks(&ClientCallbacks{
+		OnConnected: func() {
+			called = true
+		},
+	})
+	client.onConnect(nil)
+
+	if !called {
+		t.Error("OnConnected callback should have been called")
+	}
+}
+
+func TestClient_onDisconnect(t *testing.T) {
+	client := NewClient(nil)
+	client.connected = true
+
+	// Test without callbacks - should not panic
+	client.onDisconnect(nil, "", nil)
+
+	if client.connected {
+		t.Error("client should be disconnected after onDisconnect")
+	}
+
+	// Reset connected state
+	client.connected = true
+
+	// Test with callback and reason
+	var receivedErr error
+	client.SetCallbacks(&ClientCallbacks{
+		OnDisconnected: func(err error) {
+			receivedErr = err
+		},
+	})
+	client.onDisconnect(nil, "test reason", nil)
+
+	if receivedErr == nil {
+		t.Error("expected error to be passed to OnDisconnected")
+	}
+	if receivedErr.Error() != "disconnected: test reason" {
+		t.Errorf("unexpected error message: %v", receivedErr)
+	}
+}
+
+func TestClient_onDisconnect_EmptyReason(t *testing.T) {
+	client := NewClient(nil)
+	client.connected = true
+
+	var receivedErr error
+	client.SetCallbacks(&ClientCallbacks{
+		OnDisconnected: func(err error) {
+			receivedErr = err
+		},
+	})
+	client.onDisconnect(nil, "", nil)
+
+	if receivedErr != nil {
+		t.Errorf("expected nil error for empty reason, got: %v", receivedErr)
+	}
+}
+
+func TestClient_RouterVersion_Concurrent(t *testing.T) {
+	client := NewClient(nil)
+
+	// Test concurrent access to RouterVersion - should be thread-safe
+	done := make(chan bool)
+	for i := 0; i < 10; i++ {
+		go func() {
+			_ = client.RouterVersion()
+			done <- true
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+
+func TestClient_SessionManagement_Concurrent(t *testing.T) {
+	client := NewClient(nil)
+
+	// Test concurrent session registration and retrieval
+	done := make(chan bool)
+	for i := 0; i < 100; i++ {
+		go func(n int) {
+			id := fmt.Sprintf("session-%d", n)
+			sess := &I2CPSession{samSessionID: id}
+			client.RegisterSession(id, sess)
+			_ = client.GetSession(id)
+			client.UnregisterSession(id)
+			done <- true
+		}(i)
+	}
+
+	for i := 0; i < 100; i++ {
+		<-done
 	}
 }
