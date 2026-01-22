@@ -32,26 +32,24 @@ Unlike other SAM implementations that require a separate I2P router, `go-sam-bri
 
 ## Status
 
-🚧 **Under Active Development** - See [PLAN.md](PLAN.md) for the detailed implementation roadmap.
+✅ **Core Implementation Complete** - All SAMv3.3 protocol features are implemented.
 
-Current implementation includes:
+**Implemented Features:**
 
-- Basic connection handling
-- HELLO handshake
-- Command parsing framework
-- Session management structure
+- Full SAM command parsing with UTF-8 support
+- HELLO handshake with version negotiation and optional authentication
+- SESSION CREATE/ADD/REMOVE for all session styles
+- STREAM CONNECT/ACCEPT/FORWARD operations
+- DATAGRAM, DATAGRAM2, DATAGRAM3 send/receive
+- RAW anonymous datagram support
+- PRIMARY sessions with multiplexed subsessions
+- DEST GENERATE with Ed25519/ECIES-X25519 key generation
+- NAMING LOOKUP with B32/B33 address resolution
+- PING/PONG keepalive
+- AUTH commands for authentication management
+- Utility commands (QUIT, STOP, EXIT, HELP)
 
-## Implementation Plan
-
-The bridge is being developed in 5 phases:
-
-1. **Phase 1** - STREAM sessions (CONNECT/ACCEPT/FORWARD)
-2. **Phase 2** - RAW sessions (anonymous datagrams)
-3. **Phase 3** - DATAGRAM sessions (repliable/authenticated)
-4. **Phase 4** - DATAGRAM2/3 (new formats)
-5. **Phase 5** - PRIMARY sessions (multiplexing)
-
-See [PLAN.md](PLAN.md) for complete architectural details and timeline.
+See [AUDIT.md](AUDIT.md) for the functional audit report.
 
 ## Quick Start
 
@@ -97,15 +95,15 @@ outbound.quantity=3
 
 ## Contributing
 
-Contributions are welcome! This is a greenfield project implementing a well-defined protocol.
+Contributions are welcome! 
 
 Areas where help is needed:
 
-- Core session implementations (see [PLAN.md](PLAN.md))
-- Protocol command handlers
-- Integration with go-i2cp/go-streaming/go-datagrams
 - Testing against Java I2P and i2pd routers
-- Documentation and examples
+- Integration testing with SAM client libraries
+- Documentation and usage examples
+- Performance optimization
+- Bug reports and feature requests
 
 ## References
 
