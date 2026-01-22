@@ -184,13 +184,21 @@ func parseDatagramPort(s, name string) (int, error) {
 //	DATAGRAM RECEIVED DESTINATION=$dest SIZE=$numBytes [FROM_PORT=nnn] [TO_PORT=nnn] \n
 //	<$numBytes of data>
 //
+// Note: FROM_PORT and TO_PORT are only included for SAM 3.2 or higher.
+//
 // Parameters:
 //   - dg: The received datagram containing source, ports, and data
+//   - version: The negotiated SAM version (e.g., "3.2", "3.3")
 //
 // Returns the formatted response line (without the data payload).
-func FormatDatagramReceived(dg session.ReceivedDatagram) string {
-	return fmt.Sprintf("DATAGRAM RECEIVED DESTINATION=%s SIZE=%d FROM_PORT=%d TO_PORT=%d",
-		dg.Source, len(dg.Data), dg.FromPort, dg.ToPort)
+func FormatDatagramReceived(dg session.ReceivedDatagram, version string) string {
+	if protocol.VersionSupportsPortInfo(version) {
+		return fmt.Sprintf("DATAGRAM RECEIVED DESTINATION=%s SIZE=%d FROM_PORT=%d TO_PORT=%d",
+			dg.Source, len(dg.Data), dg.FromPort, dg.ToPort)
+	}
+	// SAM 3.0/3.1: No port info
+	return fmt.Sprintf("DATAGRAM RECEIVED DESTINATION=%s SIZE=%d",
+		dg.Source, len(dg.Data))
 }
 
 // FormatDatagramForward creates the header line for forwarded DATAGRAM datagrams.

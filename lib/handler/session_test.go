@@ -877,6 +877,89 @@ func TestSessionHandler_ParseConfig(t *testing.T) {
 			wantErr:   true,
 			errSubstr: "HEADER option is only valid for STYLE=RAW",
 		},
+		// I2CP options passthrough tests
+		{
+			name: "i2cp options passthrough",
+			options: map[string]string{
+				"i2cp.leaseSetEncType": "4,0",
+				"i2cp.reduceOnIdle":    "true",
+			},
+			style: session.StyleStream,
+			check: func(c *session.SessionConfig) bool {
+				return c.I2CPOptions["i2cp.leaseSetEncType"] == "4,0" &&
+					c.I2CPOptions["i2cp.reduceOnIdle"] == "true"
+			},
+		},
+		{
+			name: "streaming options passthrough",
+			options: map[string]string{
+				"streaming.maxConnsPerMinute": "10",
+				"streaming.initialAckDelay":   "500",
+			},
+			style: session.StyleStream,
+			check: func(c *session.SessionConfig) bool {
+				return c.I2CPOptions["streaming.maxConnsPerMinute"] == "10" &&
+					c.I2CPOptions["streaming.initialAckDelay"] == "500"
+			},
+		},
+		{
+			name: "sam options passthrough",
+			options: map[string]string{
+				"sam.udp.host": "localhost",
+				"sam.udp.port": "7655",
+			},
+			style: session.StyleDatagram,
+			check: func(c *session.SessionConfig) bool {
+				return c.I2CPOptions["sam.udp.host"] == "localhost" &&
+					c.I2CPOptions["sam.udp.port"] == "7655"
+			},
+		},
+		{
+			name: "inbound.backupQuantity passthrough (not explicitly parsed)",
+			options: map[string]string{
+				"inbound.backupQuantity":  "2",
+				"outbound.backupQuantity": "2",
+			},
+			style: session.StyleStream,
+			check: func(c *session.SessionConfig) bool {
+				return c.I2CPOptions["inbound.backupQuantity"] == "2" &&
+					c.I2CPOptions["outbound.backupQuantity"] == "2"
+			},
+		},
+		{
+			name: "mixed explicit and passthrough options",
+			options: map[string]string{
+				"inbound.quantity":        "5",
+				"outbound.quantity":       "5",
+				"i2cp.leaseSetEncType":    "4",
+				"streaming.maxWindowSize": "64",
+			},
+			style: session.StyleStream,
+			check: func(c *session.SessionConfig) bool {
+				// Explicitly parsed should be in config fields
+				return c.InboundQuantity == 5 && c.OutboundQuantity == 5 &&
+					// Not explicitly parsed should be in I2CPOptions
+					c.I2CPOptions["i2cp.leaseSetEncType"] == "4" &&
+					c.I2CPOptions["streaming.maxWindowSize"] == "64" &&
+					// Explicitly parsed should NOT be in I2CPOptions
+					c.I2CPOptions["inbound.quantity"] == "" &&
+					c.I2CPOptions["outbound.quantity"] == ""
+			},
+		},
+		{
+			name: "standard SAM options not passed through",
+			options: map[string]string{
+				"i2cp.leaseSetEncType": "4,0",
+			},
+			style: session.StyleStream,
+			check: func(c *session.SessionConfig) bool {
+				// i2cp option should be stored
+				return c.I2CPOptions["i2cp.leaseSetEncType"] == "4,0" &&
+					// Standard SAM options should not be stored in I2CPOptions
+					// (they would have been validated and rejected if provided with wrong style)
+					len(c.I2CPOptions) == 1
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -928,6 +1011,84 @@ func TestContainsWhitespace(t *testing.T) {
 			got := containsWhitespace(tt.input)
 			if got != tt.want {
 				t.Errorf("containsWhitespace(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsStandardSAMOption(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"STYLE", true},
+		{"ID", true},
+		{"DESTINATION", true},
+		{"SIGNATURE_TYPE", true},
+		{"PORT", true},
+		{"HOST", true},
+		{"SILENT", true},
+		{"SSL", true},
+		{"LISTEN_PORT", true},
+		{"LISTEN_PROTOCOL", true},
+		{"SEND_TAGS", true},
+		{"TAG_THRESHOLD", true},
+		{"EXPIRES", true},
+		{"SEND_LEASESET", true},
+		// Non-SAM options
+		{"i2cp.leaseSetEncType", false},
+		{"streaming.maxConnsPerMinute", false},
+		{"inbound.quantity", false},
+		{"outbound.length", false},
+		{"CUSTOM_OPTION", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			got := isStandardSAMOption(tt.key)
+			if got != tt.want {
+				t.Errorf("isStandardSAMOption(%q) = %v, want %v", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsI2CPOption(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		// i2cp.* options
+		{"i2cp.leaseSetEncType", true},
+		{"i2cp.reduceOnIdle", true},
+		{"i2cp.closeOnIdle", true},
+		// streaming.* options
+		{"streaming.maxConnsPerMinute", true},
+		{"streaming.initialAckDelay", true},
+		{"streaming.maxWindowSize", true},
+		// inbound.* options
+		{"inbound.quantity", true},
+		{"inbound.length", true},
+		{"inbound.backupQuantity", true},
+		// outbound.* options
+		{"outbound.quantity", true},
+		{"outbound.length", true},
+		{"outbound.backupQuantity", true},
+		// sam.* options
+		{"sam.udp.host", true},
+		{"sam.udp.port", true},
+		// Non-I2CP options
+		{"STYLE", false},
+		{"DESTINATION", false},
+		{"PROTOCOL", false},
+		{"randomOption", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			got := isI2CPOption(tt.key)
+			if got != tt.want {
+				t.Errorf("isI2CPOption(%q) = %v, want %v", tt.key, got, tt.want)
 			}
 		})
 	}

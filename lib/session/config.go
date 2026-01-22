@@ -76,6 +76,18 @@ type SessionConfig struct {
 	// OfflineSignature contains offline signature data if provided.
 	// Allows transient keys while keeping long-term identity offline.
 	OfflineSignature *OfflineSignature
+
+	// I2CPOptions contains arbitrary i2cp.* and streaming.* options that are not
+	// explicitly parsed. These options are stored for passthrough to the I2CP layer
+	// when connecting to the I2P router. Per SAMv3.md: "Additional options given
+	// are passed to the I2P session configuration (see I2CP options)."
+	//
+	// Keys are stored without prefix normalization (e.g., "i2cp.leaseSetEncType").
+	// Common options include:
+	//   - i2cp.leaseSetEncType: Encryption types (e.g., "4,0")
+	//   - i2cp.reduceOnIdle: Reduce tunnels when idle
+	//   - streaming.maxConnsPerMinute: Connection rate limiting
+	I2CPOptions map[string]string
 }
 
 // OfflineSignature represents offline signing capability per SAM 3.3.
@@ -114,6 +126,7 @@ func DefaultSessionConfig() *SessionConfig {
 		ReduceIdleQuantity:     0,
 		CloseIdleTime:          0,
 		OfflineSignature:       nil,
+		I2CPOptions:            make(map[string]string),
 	}
 }
 
@@ -289,6 +302,26 @@ func (c *SessionConfig) WithEncryptionTypes(types []int) *SessionConfig {
 	return c
 }
 
+// WithI2CPOption sets a single I2CP option for passthrough to the I2P router.
+// Keys should include the full option name (e.g., "i2cp.leaseSetEncType").
+func (c *SessionConfig) WithI2CPOption(key, value string) *SessionConfig {
+	if c.I2CPOptions == nil {
+		c.I2CPOptions = make(map[string]string)
+	}
+	c.I2CPOptions[key] = value
+	return c
+}
+
+// WithI2CPOptions sets multiple I2CP options for passthrough to the I2P router.
+// Replaces any existing I2CP options.
+func (c *SessionConfig) WithI2CPOptions(options map[string]string) *SessionConfig {
+	c.I2CPOptions = make(map[string]string, len(options))
+	for k, v := range options {
+		c.I2CPOptions[k] = v
+	}
+	return c
+}
+
 // Clone creates a deep copy of the configuration.
 func (c *SessionConfig) Clone() *SessionConfig {
 	if c == nil {
@@ -307,6 +340,12 @@ func (c *SessionConfig) Clone() *SessionConfig {
 			offlineCopy.Signature = append([]byte{}, c.OfflineSignature.Signature...)
 		}
 		clone.OfflineSignature = &offlineCopy
+	}
+	if c.I2CPOptions != nil {
+		clone.I2CPOptions = make(map[string]string, len(c.I2CPOptions))
+		for k, v := range c.I2CPOptions {
+			clone.I2CPOptions[k] = v
+		}
 	}
 	return &clone
 }

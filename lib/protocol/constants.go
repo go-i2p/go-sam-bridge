@@ -123,3 +123,22 @@ const (
 	SAMVersionMin = "3.0"
 	SAMVersionMax = "3.3"
 )
+
+// VersionSupportsPortInfo returns true if the given SAM version supports
+// FROM_PORT/TO_PORT in received datagrams. Per SAMv3.md, port info is
+// only included in DATAGRAM RECEIVED and RAW RECEIVED for SAM 3.2 or higher.
+func VersionSupportsPortInfo(version string) bool {
+	// Empty version defaults to latest behavior (include ports)
+	if version == "" {
+		return true
+	}
+	// SAM 3.2+ supports port info
+	// Simple comparison: 3.2 and 3.3 support ports; 3.0 and 3.1 do not
+	switch version {
+	case "3.0", "3.1":
+		return false
+	default:
+		// 3.2, 3.3, and any future versions support port info
+		return true
+	}
+}

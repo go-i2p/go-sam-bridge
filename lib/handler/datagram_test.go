@@ -476,61 +476,122 @@ func TestParseDatagramPort(t *testing.T) {
 }
 
 func TestFormatDatagramReceived(t *testing.T) {
-	tests := []struct {
-		name string
-		dg   session.ReceivedDatagram
-		want string
-	}{
-		{
-			name: "basic datagram",
-			dg: session.ReceivedDatagram{
-				Source:   "test-destination.i2p",
-				Data:     []byte("hello"),
-				FromPort: 0,
-				ToPort:   0,
+	// Test SAM 3.2+ (with ports)
+	t.Run("SAM 3.2+ includes ports", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			dg      session.ReceivedDatagram
+			version string
+			want    string
+		}{
+			{
+				name: "basic datagram 3.2",
+				dg: session.ReceivedDatagram{
+					Source:   "test-destination.i2p",
+					Data:     []byte("hello"),
+					FromPort: 0,
+					ToPort:   0,
+				},
+				version: "3.2",
+				want:    "DATAGRAM RECEIVED DESTINATION=test-destination.i2p SIZE=5 FROM_PORT=0 TO_PORT=0",
 			},
-			want: "DATAGRAM RECEIVED DESTINATION=test-destination.i2p SIZE=5 FROM_PORT=0 TO_PORT=0",
-		},
-		{
-			name: "with ports",
-			dg: session.ReceivedDatagram{
-				Source:   "sender.i2p",
-				Data:     []byte("test message"),
-				FromPort: 1234,
-				ToPort:   5678,
+			{
+				name: "with ports 3.3",
+				dg: session.ReceivedDatagram{
+					Source:   "sender.i2p",
+					Data:     []byte("test message"),
+					FromPort: 1234,
+					ToPort:   5678,
+				},
+				version: "3.3",
+				want:    "DATAGRAM RECEIVED DESTINATION=sender.i2p SIZE=12 FROM_PORT=1234 TO_PORT=5678",
 			},
-			want: "DATAGRAM RECEIVED DESTINATION=sender.i2p SIZE=12 FROM_PORT=1234 TO_PORT=5678",
-		},
-		{
-			name: "empty data",
-			dg: session.ReceivedDatagram{
-				Source:   "empty.i2p",
-				Data:     []byte{},
-				FromPort: 0,
-				ToPort:   0,
+			{
+				name: "empty version defaults to include ports",
+				dg: session.ReceivedDatagram{
+					Source:   "empty-version.i2p",
+					Data:     []byte("x"),
+					FromPort: 100,
+					ToPort:   200,
+				},
+				version: "",
+				want:    "DATAGRAM RECEIVED DESTINATION=empty-version.i2p SIZE=1 FROM_PORT=100 TO_PORT=200",
 			},
-			want: "DATAGRAM RECEIVED DESTINATION=empty.i2p SIZE=0 FROM_PORT=0 TO_PORT=0",
-		},
-		{
-			name: "max ports",
-			dg: session.ReceivedDatagram{
-				Source:   "maxports.i2p",
-				Data:     []byte("x"),
-				FromPort: 65535,
-				ToPort:   65535,
+			{
+				name: "max ports",
+				dg: session.ReceivedDatagram{
+					Source:   "maxports.i2p",
+					Data:     []byte("x"),
+					FromPort: 65535,
+					ToPort:   65535,
+				},
+				version: "3.2",
+				want:    "DATAGRAM RECEIVED DESTINATION=maxports.i2p SIZE=1 FROM_PORT=65535 TO_PORT=65535",
 			},
-			want: "DATAGRAM RECEIVED DESTINATION=maxports.i2p SIZE=1 FROM_PORT=65535 TO_PORT=65535",
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := FormatDatagramReceived(tt.dg)
-			if got != tt.want {
-				t.Errorf("FormatDatagramReceived() = %q, want %q", got, tt.want)
-			}
-		})
-	}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := FormatDatagramReceived(tt.dg, tt.version)
+				if got != tt.want {
+					t.Errorf("FormatDatagramReceived() = %q, want %q", got, tt.want)
+				}
+			})
+		}
+	})
+
+	// Test SAM 3.0/3.1 (without ports)
+	t.Run("SAM 3.0/3.1 excludes ports", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			dg      session.ReceivedDatagram
+			version string
+			want    string
+		}{
+			{
+				name: "SAM 3.0 no ports",
+				dg: session.ReceivedDatagram{
+					Source:   "test.i2p",
+					Data:     []byte("hello"),
+					FromPort: 1234,
+					ToPort:   5678,
+				},
+				version: "3.0",
+				want:    "DATAGRAM RECEIVED DESTINATION=test.i2p SIZE=5",
+			},
+			{
+				name: "SAM 3.1 no ports",
+				dg: session.ReceivedDatagram{
+					Source:   "sender.i2p",
+					Data:     []byte("test"),
+					FromPort: 100,
+					ToPort:   200,
+				},
+				version: "3.1",
+				want:    "DATAGRAM RECEIVED DESTINATION=sender.i2p SIZE=4",
+			},
+			{
+				name: "empty data SAM 3.0",
+				dg: session.ReceivedDatagram{
+					Source:   "empty.i2p",
+					Data:     []byte{},
+					FromPort: 0,
+					ToPort:   0,
+				},
+				version: "3.0",
+				want:    "DATAGRAM RECEIVED DESTINATION=empty.i2p SIZE=0",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := FormatDatagramReceived(tt.dg, tt.version)
+				if got != tt.want {
+					t.Errorf("FormatDatagramReceived() = %q, want %q", got, tt.want)
+				}
+			})
+		}
+	})
 }
 
 func TestFormatDatagramForward(t *testing.T) {

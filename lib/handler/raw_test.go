@@ -466,18 +466,100 @@ func TestParseProtocol(t *testing.T) {
 }
 
 func TestFormatRawReceived(t *testing.T) {
-	dg := session.ReceivedRawDatagram{
-		FromPort: 1234,
-		ToPort:   5678,
-		Protocol: 18,
-		Data:     []byte("hello world"),
-	}
+	// Test SAM 3.2+ (with ports and protocol)
+	t.Run("SAM 3.2+ includes ports and protocol", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			dg      session.ReceivedRawDatagram
+			version string
+			want    string
+		}{
+			{
+				name: "SAM 3.2 with all info",
+				dg: session.ReceivedRawDatagram{
+					FromPort: 1234,
+					ToPort:   5678,
+					Protocol: 18,
+					Data:     []byte("hello world"),
+				},
+				version: "3.2",
+				want:    "RAW RECEIVED SIZE=11 FROM_PORT=1234 TO_PORT=5678 PROTOCOL=18",
+			},
+			{
+				name: "SAM 3.3 with all info",
+				dg: session.ReceivedRawDatagram{
+					FromPort: 100,
+					ToPort:   200,
+					Protocol: 42,
+					Data:     []byte("test"),
+				},
+				version: "3.3",
+				want:    "RAW RECEIVED SIZE=4 FROM_PORT=100 TO_PORT=200 PROTOCOL=42",
+			},
+			{
+				name: "empty version defaults to include info",
+				dg: session.ReceivedRawDatagram{
+					FromPort: 0,
+					ToPort:   0,
+					Protocol: 18,
+					Data:     []byte("x"),
+				},
+				version: "",
+				want:    "RAW RECEIVED SIZE=1 FROM_PORT=0 TO_PORT=0 PROTOCOL=18",
+			},
+		}
 
-	got := FormatRawReceived(dg)
-	want := "RAW RECEIVED SIZE=11 FROM_PORT=1234 TO_PORT=5678 PROTOCOL=18"
-	if got != want {
-		t.Errorf("FormatRawReceived() = %q, want %q", got, want)
-	}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := FormatRawReceived(tt.dg, tt.version)
+				if got != tt.want {
+					t.Errorf("FormatRawReceived() = %q, want %q", got, tt.want)
+				}
+			})
+		}
+	})
+
+	// Test SAM 3.0/3.1 (without ports and protocol)
+	t.Run("SAM 3.0/3.1 excludes ports and protocol", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			dg      session.ReceivedRawDatagram
+			version string
+			want    string
+		}{
+			{
+				name: "SAM 3.0 size only",
+				dg: session.ReceivedRawDatagram{
+					FromPort: 1234,
+					ToPort:   5678,
+					Protocol: 18,
+					Data:     []byte("hello world"),
+				},
+				version: "3.0",
+				want:    "RAW RECEIVED SIZE=11",
+			},
+			{
+				name: "SAM 3.1 size only",
+				dg: session.ReceivedRawDatagram{
+					FromPort: 100,
+					ToPort:   200,
+					Protocol: 42,
+					Data:     []byte("test"),
+				},
+				version: "3.1",
+				want:    "RAW RECEIVED SIZE=4",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := FormatRawReceived(tt.dg, tt.version)
+				if got != tt.want {
+					t.Errorf("FormatRawReceived() = %q, want %q", got, tt.want)
+				}
+			})
+		}
+	})
 }
 
 func TestFormatRawHeader(t *testing.T) {

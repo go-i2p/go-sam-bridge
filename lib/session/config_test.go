@@ -40,6 +40,12 @@ func TestDefaultSessionConfig(t *testing.T) {
 	if cfg.OfflineSignature != nil {
 		t.Error("OfflineSignature should be nil")
 	}
+	if cfg.I2CPOptions == nil {
+		t.Error("I2CPOptions should be initialized (not nil)")
+	}
+	if len(cfg.I2CPOptions) != 0 {
+		t.Errorf("I2CPOptions should be empty, got %d entries", len(cfg.I2CPOptions))
+	}
 }
 
 func TestSessionConfig_Validate(t *testing.T) {
@@ -218,6 +224,57 @@ func TestSessionConfig_Chaining(t *testing.T) {
 	}
 }
 
+func TestSessionConfig_I2CPOptionsChaining(t *testing.T) {
+	t.Run("WithI2CPOption single", func(t *testing.T) {
+		cfg := DefaultSessionConfig().
+			WithI2CPOption("i2cp.leaseSetEncType", "4,0")
+
+		if cfg.I2CPOptions["i2cp.leaseSetEncType"] != "4,0" {
+			t.Errorf("I2CPOptions[i2cp.leaseSetEncType] = %q, want %q", cfg.I2CPOptions["i2cp.leaseSetEncType"], "4,0")
+		}
+	})
+
+	t.Run("WithI2CPOption multiple", func(t *testing.T) {
+		cfg := DefaultSessionConfig().
+			WithI2CPOption("i2cp.leaseSetEncType", "4,0").
+			WithI2CPOption("streaming.maxConnsPerMinute", "10")
+
+		if cfg.I2CPOptions["i2cp.leaseSetEncType"] != "4,0" {
+			t.Errorf("I2CPOptions[i2cp.leaseSetEncType] = %q, want %q", cfg.I2CPOptions["i2cp.leaseSetEncType"], "4,0")
+		}
+		if cfg.I2CPOptions["streaming.maxConnsPerMinute"] != "10" {
+			t.Errorf("I2CPOptions[streaming.maxConnsPerMinute] = %q, want %q", cfg.I2CPOptions["streaming.maxConnsPerMinute"], "10")
+		}
+	})
+
+	t.Run("WithI2CPOptions replaces all", func(t *testing.T) {
+		cfg := DefaultSessionConfig().
+			WithI2CPOption("old.option", "value").
+			WithI2CPOptions(map[string]string{
+				"new.option": "value",
+			})
+
+		if _, exists := cfg.I2CPOptions["old.option"]; exists {
+			t.Error("WithI2CPOptions should replace all existing options")
+		}
+		if cfg.I2CPOptions["new.option"] != "value" {
+			t.Errorf("I2CPOptions[new.option] = %q, want %q", cfg.I2CPOptions["new.option"], "value")
+		}
+	})
+
+	t.Run("WithI2CPOption on nil map", func(t *testing.T) {
+		cfg := &SessionConfig{}
+		cfg.WithI2CPOption("key", "value")
+
+		if cfg.I2CPOptions == nil {
+			t.Error("WithI2CPOption should initialize nil map")
+		}
+		if cfg.I2CPOptions["key"] != "value" {
+			t.Errorf("I2CPOptions[key] = %q, want %q", cfg.I2CPOptions["key"], "value")
+		}
+	})
+}
+
 func TestSessionConfig_Clone(t *testing.T) {
 	t.Run("nil config", func(t *testing.T) {
 		var cfg *SessionConfig
@@ -290,6 +347,31 @@ func TestSessionConfig_Clone(t *testing.T) {
 		}
 		if clone.OfflineSignature.TransientPublicKey[0] == 'X' {
 			t.Error("Clone OfflineSignature.TransientPublicKey should be isolated")
+		}
+	})
+
+	t.Run("I2CPOptions clone", func(t *testing.T) {
+		orig := DefaultSessionConfig()
+		orig.I2CPOptions["i2cp.leaseSetEncType"] = "4,0"
+		orig.I2CPOptions["streaming.maxConnsPerMinute"] = "10"
+
+		clone := orig.Clone()
+		if clone.I2CPOptions == nil {
+			t.Error("Clone I2CPOptions should not be nil")
+		}
+		if clone.I2CPOptions["i2cp.leaseSetEncType"] != "4,0" {
+			t.Errorf("Clone.I2CPOptions[i2cp.leaseSetEncType] = %q, want %q", clone.I2CPOptions["i2cp.leaseSetEncType"], "4,0")
+		}
+		if clone.I2CPOptions["streaming.maxConnsPerMinute"] != "10" {
+			t.Errorf("Clone.I2CPOptions[streaming.maxConnsPerMinute] = %q, want %q", clone.I2CPOptions["streaming.maxConnsPerMinute"], "10")
+		}
+
+		// Modify original
+		orig.I2CPOptions["i2cp.leaseSetEncType"] = "modified"
+
+		// Clone should be unaffected
+		if clone.I2CPOptions["i2cp.leaseSetEncType"] == "modified" {
+			t.Error("Clone I2CPOptions should be isolated from original")
 		}
 	})
 }

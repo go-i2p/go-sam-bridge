@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/go-i2p/go-sam-bridge/lib/destination"
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
@@ -428,17 +429,23 @@ func (h *SessionHandler) createDatagram3Session(
 // parseConfig extracts session configuration from command options.
 // Per SAM 3.2+, validates ports (0-65535) and protocol (0-255, excluding 6,17,19,20).
 // The style parameter determines which options are valid.
+// Unparsed i2cp.* and streaming.* options are stored for passthrough to I2CP.
 // Returns an error if validation fails.
 func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style) (*session.SessionConfig, error) {
 	config := session.DefaultSessionConfig()
 
+	// Track which options are explicitly parsed so we can collect unparsed ones
+	parsedOptions := make(map[string]bool)
+
 	// Parse tunnel quantities
 	if v := cmd.Get("inbound.quantity"); v != "" {
+		parsedOptions["inbound.quantity"] = true
 		if qty, err := strconv.Atoi(v); err == nil && qty >= 0 {
 			config.InboundQuantity = qty
 		}
 	}
 	if v := cmd.Get("outbound.quantity"); v != "" {
+		parsedOptions["outbound.quantity"] = true
 		if qty, err := strconv.Atoi(v); err == nil && qty >= 0 {
 			config.OutboundQuantity = qty
 		}
@@ -446,11 +453,13 @@ func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style)
 
 	// Parse tunnel lengths
 	if v := cmd.Get("inbound.length"); v != "" {
+		parsedOptions["inbound.length"] = true
 		if len, err := strconv.Atoi(v); err == nil && len >= 0 {
 			config.InboundLength = len
 		}
 	}
 	if v := cmd.Get("outbound.length"); v != "" {
+		parsedOptions["outbound.length"] = true
 		if len, err := strconv.Atoi(v); err == nil && len >= 0 {
 			config.OutboundLength = len
 		}
@@ -458,6 +467,7 @@ func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style)
 
 	// Parse and validate ports (SAM 3.2+)
 	if v := cmd.Get("FROM_PORT"); v != "" {
+		parsedOptions["FROM_PORT"] = true
 		port, err := protocol.ValidatePortString(v)
 		if err != nil {
 			return nil, fmt.Errorf("invalid FROM_PORT: %w", err)
@@ -465,6 +475,7 @@ func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style)
 		config.FromPort = port
 	}
 	if v := cmd.Get("TO_PORT"); v != "" {
+		parsedOptions["TO_PORT"] = true
 		port, err := protocol.ValidatePortString(v)
 		if err != nil {
 			return nil, fmt.Errorf("invalid TO_PORT: %w", err)
@@ -475,6 +486,7 @@ func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style)
 	// Parse and validate RAW-specific options
 	// PROTOCOL is only valid for STYLE=RAW per SAM 3.2 specification
 	if v := cmd.Get("PROTOCOL"); v != "" {
+		parsedOptions["PROTOCOL"] = true
 		if style != session.StyleRaw {
 			return nil, fmt.Errorf("PROTOCOL option is only valid for STYLE=RAW")
 		}
@@ -487,10 +499,29 @@ func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style)
 
 	// HEADER is only valid for STYLE=RAW per SAM 3.2 specification
 	if v := cmd.Get("HEADER"); v != "" {
+		parsedOptions["HEADER"] = true
 		if style != session.StyleRaw {
 			return nil, fmt.Errorf("HEADER option is only valid for STYLE=RAW")
 		}
 		config.HeaderEnabled = (v == "true")
+	}
+
+	// Collect unparsed i2cp.* and streaming.* options for I2CP passthrough.
+	// Per SAMv3.md: "Additional options given are passed to the I2P session
+	// configuration (see I2CP options)."
+	for key, value := range cmd.Options {
+		// Skip options that were explicitly parsed above
+		if parsedOptions[key] {
+			continue
+		}
+		// Skip standard SAM command options that aren't I2CP options
+		if isStandardSAMOption(key) {
+			continue
+		}
+		// Store i2cp.*, streaming.*, inbound.*, outbound.* options
+		if isI2CPOption(key) {
+			config.I2CPOptions[key] = value
+		}
 	}
 
 	return config, nil
@@ -504,6 +535,32 @@ func containsWhitespace(s string) bool {
 		}
 	}
 	return false
+}
+
+// isStandardSAMOption returns true if the option is a standard SAM command option
+// that should not be passed through to I2CP. These are options defined in the
+// SAM specification that are handled by the SAM bridge itself.
+func isStandardSAMOption(key string) bool {
+	switch key {
+	case "STYLE", "ID", "DESTINATION", "SIGNATURE_TYPE",
+		"PORT", "HOST", "SILENT", "SSL",
+		"LISTEN_PORT", "LISTEN_PROTOCOL",
+		"SEND_TAGS", "TAG_THRESHOLD", "EXPIRES", "SEND_LEASESET":
+		return true
+	default:
+		return false
+	}
+}
+
+// isI2CPOption returns true if the option should be passed through to I2CP.
+// This includes i2cp.*, streaming.*, inbound.*, outbound.*, and sam.* options
+// per SAMv3.md specification.
+func isI2CPOption(key string) bool {
+	return strings.HasPrefix(key, "i2cp.") ||
+		strings.HasPrefix(key, "streaming.") ||
+		strings.HasPrefix(key, "inbound.") ||
+		strings.HasPrefix(key, "outbound.") ||
+		strings.HasPrefix(key, "sam.")
 }
 
 // sessionOK returns a successful SESSION STATUS response.

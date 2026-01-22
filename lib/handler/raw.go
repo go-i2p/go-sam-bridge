@@ -203,13 +203,20 @@ func parseProtocol(s string) (int, error) {
 //	RAW RECEIVED SIZE=$numBytes [FROM_PORT=nnn] [TO_PORT=nnn] [PROTOCOL=nnn] \n
 //	<$numBytes of data>
 //
+// Note: FROM_PORT, TO_PORT, and PROTOCOL are only included for SAM 3.2 or higher.
+//
 // Parameters:
 //   - dg: The received raw datagram containing port, protocol, and data
+//   - version: The negotiated SAM version (e.g., "3.2", "3.3")
 //
 // Returns the formatted response line (without the data payload).
-func FormatRawReceived(dg session.ReceivedRawDatagram) string {
-	return fmt.Sprintf("RAW RECEIVED SIZE=%d FROM_PORT=%d TO_PORT=%d PROTOCOL=%d",
-		len(dg.Data), dg.FromPort, dg.ToPort, dg.Protocol)
+func FormatRawReceived(dg session.ReceivedRawDatagram, version string) string {
+	if protocol.VersionSupportsPortInfo(version) {
+		return fmt.Sprintf("RAW RECEIVED SIZE=%d FROM_PORT=%d TO_PORT=%d PROTOCOL=%d",
+			len(dg.Data), dg.FromPort, dg.ToPort, dg.Protocol)
+	}
+	// SAM 3.0/3.1: No port/protocol info
+	return fmt.Sprintf("RAW RECEIVED SIZE=%d", len(dg.Data))
 }
 
 // FormatRawHeader creates the header line for forwarded RAW datagrams.
