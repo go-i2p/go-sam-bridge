@@ -28,6 +28,8 @@ import (
 	"syscall"
 
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
+	"github.com/go-i2p/go-sam-bridge/lib/destination"
+	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/sirupsen/logrus"
@@ -138,6 +140,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register all SAM command handlers
+	registerHandlers(server, cfg, log)
+
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -224,4 +229,84 @@ func parseFlags() *Config {
 	}
 
 	return cfg
+}
+
+// registerHandlers registers all SAM command handlers with the server.
+// This sets up handlers for HELLO, SESSION, STREAM, DATAGRAM, RAW,
+// NAMING, DEST, PING, QUIT, and AUTH commands per SAMv3.md.
+func registerHandlers(server *bridge.Server, cfg *Config, log *logrus.Logger) {
+	router := server.Router()
+	authStore := server.AuthStore()
+
+	// Create shared dependencies
+	destManager := destination.NewManager()
+
+	// Register HELLO handler (must be first command per SAMv3.md)
+	helloConfig := handler.DefaultHelloConfig()
+	if authStore != nil && authStore.IsAuthEnabled() {
+		helloConfig.RequireAuth = true
+		helloConfig.AuthFunc = authStore.CheckPassword
+	}
+	helloHandler := handler.NewHelloHandler(helloConfig)
+	router.Register("HELLO VERSION", helloHandler)
+
+	log.Debug("Registered HELLO VERSION handler")
+
+	// Register SESSION handler
+	sessionHandler := handler.NewSessionHandler(destManager)
+	router.Register("SESSION CREATE", sessionHandler)
+	router.Register("SESSION ADD", sessionHandler)
+	router.Register("SESSION REMOVE", sessionHandler)
+
+	log.Debug("Registered SESSION handlers")
+
+	// Register STREAM handlers
+	streamConnector := handler.NewStreamingConnector()
+	streamAcceptor := handler.NewStreamingAcceptor()
+	streamForwarder := handler.NewStreamingForwarder()
+	streamHandler := handler.NewStreamHandler(streamConnector, streamAcceptor, streamForwarder)
+	router.Register("STREAM CONNECT", streamHandler)
+	router.Register("STREAM ACCEPT", streamHandler)
+	router.Register("STREAM FORWARD", streamHandler)
+
+	log.Debug("Registered STREAM handlers")
+
+	// Register DATAGRAM handler
+	handler.RegisterDatagramHandler(router)
+	log.Debug("Registered DATAGRAM handler")
+
+	// Register RAW handler
+	rawHandler := handler.NewRawHandler()
+	router.Register("RAW SEND", rawHandler)
+
+	log.Debug("Registered RAW handler")
+
+	// Register NAMING handler
+	namingHandler := handler.NewNamingHandler(destManager)
+	router.Register("NAMING LOOKUP", namingHandler)
+
+	log.Debug("Registered NAMING handler")
+
+	// Register DEST handler
+	destHandler := handler.NewDestHandler(destManager)
+	router.Register("DEST GENERATE", destHandler)
+
+	log.Debug("Registered DEST handler")
+
+	// Register PING handler
+	handler.RegisterPingHandler(router)
+	log.Debug("Registered PING handler")
+
+	// Register utility handlers (QUIT, HELP, etc.)
+	handler.RegisterUtilityHandlers(router)
+	handler.RegisterHelpHandler(router)
+	log.Debug("Registered utility handlers")
+
+	// Register AUTH handlers if authentication is enabled
+	if authStore != nil && authStore.IsAuthEnabled() {
+		handler.RegisterAuthHandlers(router, authStore)
+		log.Debug("Registered AUTH handlers")
+	}
+
+	log.WithField("count", router.Count()).Info("All SAM command handlers registered")
 }
