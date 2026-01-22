@@ -137,6 +137,11 @@ func (r *mockStreamRegistry) Close() error {
 	return nil
 }
 
+func (r *mockStreamRegistry) MostRecentByStyle(style session.Style) session.Session {
+	// Simple implementation - return nil (no tracking in mock)
+	return nil
+}
+
 func TestStreamHandler_HandleConnect(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -1064,4 +1069,139 @@ func TestStreamHandler_ConnectError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStreamHandler_AlreadyAccepting tests version-dependent concurrent ACCEPT behavior.
+// Per SAMv3.md: Prior to SAM 3.2, concurrent ACCEPTs fail with ALREADY_ACCEPTING.
+// As of SAM 3.2, multiple concurrent ACCEPTs are allowed.
+func TestStreamHandler_AlreadyAccepting(t *testing.T) {
+	t.Run("pre-3.2 rejects concurrent accept", func(t *testing.T) {
+		// Create a StreamSessionImpl with pending accept
+		streamSess := session.NewStreamSession("test-session", nil, nil, nil, nil, nil)
+		streamSess.SetStatus(session.StatusActive)
+		streamSess.IncrementPendingAccepts() // Simulate an active ACCEPT
+
+		acceptor := &mockStreamAcceptor{
+			conn: nil,
+			info: &AcceptInfo{Destination: "test", FromPort: 0, ToPort: 0},
+			err:  nil,
+		}
+		handler := NewStreamHandler(nil, acceptor, nil)
+
+		// Create context with pre-3.2 version
+		registry := newMockStreamRegistry()
+		registry.sessions["test-session"] = streamSess
+
+		ctx := &Context{
+			Version:           "3.1",
+			HandshakeComplete: true,
+			Session:           streamSess,
+			Registry:          registry,
+		}
+
+		cmd := &protocol.Command{
+			Verb:    protocol.VerbStream,
+			Action:  protocol.ActionAccept,
+			Options: map[string]string{"ID": "test-session"},
+		}
+
+		resp, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		respStr := resp.String()
+		if !strings.Contains(respStr, protocol.ResultAlreadyAccepting) {
+			t.Errorf("expected ALREADY_ACCEPTING, got: %s", respStr)
+		}
+	})
+
+	t.Run("3.2+ allows concurrent accept", func(t *testing.T) {
+		// Create a StreamSessionImpl with pending accept
+		streamSess := session.NewStreamSession("test-session", nil, nil, nil, nil, nil)
+		streamSess.SetStatus(session.StatusActive)
+		streamSess.IncrementPendingAccepts() // Simulate an active ACCEPT
+
+		// Create a simple mock connection
+		acceptor := &mockStreamAcceptor{
+			conn: nil, // nil conn is OK for this test
+			info: &AcceptInfo{Destination: "testdest", FromPort: 0, ToPort: 0},
+			err:  nil,
+		}
+		handler := NewStreamHandler(nil, acceptor, nil)
+
+		// Create context with 3.2 version - concurrent accepts allowed
+		registry := newMockStreamRegistry()
+		registry.sessions["test-session"] = streamSess
+
+		ctx := &Context{
+			Version:           "3.2",
+			HandshakeComplete: true,
+			Session:           streamSess,
+			Registry:          registry,
+		}
+
+		cmd := &protocol.Command{
+			Verb:    protocol.VerbStream,
+			Action:  protocol.ActionAccept,
+			Options: map[string]string{"ID": "test-session"},
+		}
+
+		resp, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		respStr := resp.String()
+		if strings.Contains(respStr, protocol.ResultAlreadyAccepting) {
+			t.Errorf("SAM 3.2 should allow concurrent accepts, got: %s", respStr)
+		}
+		if !strings.Contains(respStr, protocol.ResultOK) {
+			t.Errorf("expected OK result, got: %s", respStr)
+		}
+	})
+
+	t.Run("3.3 allows concurrent accept", func(t *testing.T) {
+		// Create a StreamSessionImpl with pending accept
+		streamSess := session.NewStreamSession("test-session", nil, nil, nil, nil, nil)
+		streamSess.SetStatus(session.StatusActive)
+		streamSess.IncrementPendingAccepts() // Simulate an active ACCEPT
+
+		acceptor := &mockStreamAcceptor{
+			conn: nil,
+			info: &AcceptInfo{Destination: "testdest", FromPort: 0, ToPort: 0},
+			err:  nil,
+		}
+		handler := NewStreamHandler(nil, acceptor, nil)
+
+		// Create context with 3.3 version
+		registry := newMockStreamRegistry()
+		registry.sessions["test-session"] = streamSess
+
+		ctx := &Context{
+			Version:           "3.3",
+			HandshakeComplete: true,
+			Session:           streamSess,
+			Registry:          registry,
+		}
+
+		cmd := &protocol.Command{
+			Verb:    protocol.VerbStream,
+			Action:  protocol.ActionAccept,
+			Options: map[string]string{"ID": "test-session"},
+		}
+
+		resp, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		respStr := resp.String()
+		if strings.Contains(respStr, protocol.ResultAlreadyAccepting) {
+			t.Errorf("SAM 3.3 should allow concurrent accepts, got: %s", respStr)
+		}
+		if !strings.Contains(respStr, protocol.ResultOK) {
+			t.Errorf("expected OK result, got: %s", respStr)
+		}
+	})
 }

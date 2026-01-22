@@ -94,6 +94,13 @@ func (r *mockRegistry) Close() error {
 	return nil
 }
 
+func (r *mockRegistry) MostRecentByStyle(style session.Style) session.Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	// Simple implementation - return nil (no tracking in mock)
+	return nil
+}
+
 func TestNewServer(t *testing.T) {
 	registry := newMockRegistry()
 	config := DefaultConfig()

@@ -43,6 +43,7 @@ const (
 // These are returned in the RESULT= field of responses.
 const (
 	ResultOK               = "OK"
+	ResultAlreadyAccepting = "ALREADY_ACCEPTING"
 	ResultCantReachPeer    = "CANT_REACH_PEER"
 	ResultDuplicatedDest   = "DUPLICATED_DEST"
 	ResultDuplicatedID     = "DUPLICATED_ID"

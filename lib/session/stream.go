@@ -16,6 +16,12 @@ import (
 	"github.com/go-i2p/go-streaming"
 )
 
+// ForwardConnectTimeout is the maximum time allowed to connect to the
+// forwarding target when an incoming I2P connection arrives.
+// Per SAMv3.md: "If it is accepted in less than 3 seconds, SAM will accept
+// the connection from I2P, otherwise it rejects it."
+const ForwardConnectTimeout = 3 * time.Second
+
 // StreamSessionImpl implements the StreamSession interface.
 // It embeds *BaseSession and integrates with go-streaming for I2P stream handling.
 //
@@ -37,6 +43,11 @@ type StreamSessionImpl struct {
 
 	// Listener for accepting incoming connections
 	listener *streaming.StreamListener
+
+	// Pending accept counter for SAM version-dependent behavior.
+	// Prior to SAM 3.2, only one concurrent ACCEPT is allowed per session.
+	// As of SAM 3.2, multiple concurrent ACCEPTs are allowed.
+	pendingAccepts int
 
 	// Forwarding configuration
 	forwardingEnabled bool
@@ -256,6 +267,33 @@ func (s *StreamSessionImpl) Accept(opts AcceptOptions) (net.Conn, string, error)
 	return conn, peerDest, nil
 }
 
+// IncrementPendingAccepts atomically increments the pending accept counter.
+// Used by the handler to track concurrent ACCEPT operations.
+// Per SAM spec: Prior to 3.2, only one concurrent ACCEPT is allowed.
+func (s *StreamSessionImpl) IncrementPendingAccepts() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingAccepts++
+}
+
+// DecrementPendingAccepts atomically decrements the pending accept counter.
+// Should be called when an ACCEPT completes (success or failure).
+func (s *StreamSessionImpl) DecrementPendingAccepts() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pendingAccepts > 0 {
+		s.pendingAccepts--
+	}
+}
+
+// PendingAcceptCount returns the current number of pending ACCEPT operations.
+// Used to enforce pre-3.2 single-accept restriction.
+func (s *StreamSessionImpl) PendingAcceptCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pendingAccepts
+}
+
 // Forward sets up forwarding of incoming connections to host:port.
 // Implements SAM 3.0 STREAM FORWARD command.
 //
@@ -347,7 +385,9 @@ func (s *StreamSessionImpl) forwardLoop(listener net.Listener, host string, port
 		}
 
 		// Connect to forward target
-		outConn, err := net.DialTimeout("tcp", target, 30*time.Second)
+		// Per SAMv3.md: "If it is accepted in less than 3 seconds, SAM will accept
+		// the connection from I2P, otherwise it rejects it."
+		outConn, err := net.DialTimeout("tcp", target, ForwardConnectTimeout)
 		if err != nil {
 			inConn.Close()
 			continue

@@ -168,6 +168,10 @@ func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*pro
 // Per SAMv3.md: "If SILENT=true is passed, after the connection was accepted,
 // the SAM bridge won't issue any other message on the socket. If the connection
 // failed, the socket will be closed."
+//
+// Per SAMv3.md: "As of SAM 3.2, multiple concurrent pending STREAM ACCEPTs are
+// allowed on the same session ID. Prior to 3.2, concurrent accepts would fail
+// with ALREADY_ACCEPTING."
 func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
 	// Parse required parameters
 	id := cmd.Get("ID")
@@ -188,6 +192,22 @@ func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*prot
 
 	// Parse optional parameters - parse SILENT early for correct failure handling
 	silent := parseBool(cmd.Get("SILENT"), false)
+
+	// Check for concurrent accepts (version-dependent)
+	// Prior to SAM 3.2, only one concurrent ACCEPT is allowed per session.
+	streamSess, isStreamSession := sess.(*session.StreamSessionImpl)
+	if isStreamSession {
+		// Check if we're on a pre-3.2 version
+		if compareVersions(ctx.Version, "3.2") < 0 {
+			// Pre-3.2: reject if already accepting
+			if streamSess.PendingAcceptCount() > 0 {
+				return streamAlreadyAccepting(), nil
+			}
+		}
+		// Track this pending accept
+		streamSess.IncrementPendingAccepts()
+		defer streamSess.DecrementPendingAccepts()
+	}
 
 	// Attempt accept
 	if h.Acceptor == nil {
@@ -444,6 +464,7 @@ func streamPeerNotFound(msg string) *protocol.Response {
 }
 
 // streamTimeout returns a TIMEOUT error response.
+// Per SAM spec, used when connection attempt times out.
 func streamTimeout(msg string) *protocol.Response {
 	resp := protocol.NewResponse(protocol.VerbStream).
 		WithAction(protocol.ActionStatus).
@@ -452,6 +473,16 @@ func streamTimeout(msg string) *protocol.Response {
 		resp = resp.WithMessage(msg)
 	}
 	return resp
+}
+
+// streamAlreadyAccepting returns an ALREADY_ACCEPTING error response.
+// Per SAM spec (pre-3.2), used when a concurrent ACCEPT is attempted
+// on the same session ID while another ACCEPT is pending.
+func streamAlreadyAccepting() *protocol.Response {
+	return protocol.NewResponse(protocol.VerbStream).
+		WithAction(protocol.ActionStatus).
+		WithResult(protocol.ResultAlreadyAccepting).
+		WithMessage("concurrent ACCEPT not allowed before SAM 3.2")
 }
 
 // streamError returns an I2P_ERROR response with the given message.

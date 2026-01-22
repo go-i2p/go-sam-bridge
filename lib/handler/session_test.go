@@ -67,6 +67,11 @@ func (r *mockSessionRegistry) Close() error {
 	return nil
 }
 
+func (r *mockSessionRegistry) MostRecentByStyle(style session.Style) session.Session {
+	// Simple implementation - return nil (no tracking in mock)
+	return nil
+}
+
 func TestSessionHandler_Handle(t *testing.T) {
 	mockDest := &commondest.Destination{}
 	mockPrivKey := []byte("test-private-key")

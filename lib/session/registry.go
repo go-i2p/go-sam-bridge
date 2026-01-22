@@ -25,6 +25,12 @@ type Registry interface {
 	// GetByDestination returns a session by destination hash, or nil if not found.
 	GetByDestination(destHash string) Session
 
+	// MostRecentByStyle returns the most recently created session of the given style.
+	// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
+	// DATAGRAM- or RAW-style session, as appropriate."
+	// Returns nil if no session of that style exists.
+	MostRecentByStyle(style Style) Session
+
 	// All returns all registered session IDs.
 	All() []string
 
@@ -41,13 +47,19 @@ type RegistryImpl struct {
 	mu       sync.RWMutex
 	sessions map[string]Session // id -> Session
 	dests    map[string]string  // destHash -> id (for uniqueness check)
+
+	// Track most recently created sessions by style for V1/V2 DATAGRAM/RAW commands.
+	// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
+	// DATAGRAM- or RAW-style session, as appropriate."
+	mostRecentByStyle map[Style]string // style -> session id
 }
 
 // NewRegistry creates a new session registry.
 func NewRegistry() *RegistryImpl {
 	return &RegistryImpl{
-		sessions: make(map[string]Session),
-		dests:    make(map[string]string),
+		sessions:          make(map[string]Session),
+		dests:             make(map[string]string),
+		mostRecentByStyle: make(map[Style]string),
 	}
 }
 
@@ -85,6 +97,15 @@ func (r *RegistryImpl) Register(s Session) error {
 	}
 
 	r.sessions[id] = s
+
+	// Track most recently created session by style for V1/V2 DATAGRAM/RAW commands.
+	// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
+	// DATAGRAM- or RAW-style session, as appropriate."
+	style := s.Style()
+	if style == StyleDatagram || style == StyleDatagram2 || style == StyleDatagram3 || style == StyleRaw {
+		r.mostRecentByStyle[style] = id
+	}
+
 	return nil
 }
 
@@ -107,6 +128,12 @@ func (r *RegistryImpl) Unregister(id string) error {
 		}
 	}
 
+	// Clean up most recent tracking if this was the most recent for its style
+	style := s.Style()
+	if r.mostRecentByStyle[style] == id {
+		delete(r.mostRecentByStyle, style)
+	}
+
 	delete(r.sessions, id)
 	return nil
 }
@@ -124,6 +151,20 @@ func (r *RegistryImpl) GetByDestination(destHash string) Session {
 	defer r.mu.RUnlock()
 
 	if id, exists := r.dests[destHash]; exists {
+		return r.sessions[id]
+	}
+	return nil
+}
+
+// MostRecentByStyle returns the most recently created session of the given style.
+// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
+// DATAGRAM- or RAW-style session, as appropriate."
+// Returns nil if no session of that style exists.
+func (r *RegistryImpl) MostRecentByStyle(style Style) Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if id, exists := r.mostRecentByStyle[style]; exists {
 		return r.sessions[id]
 	}
 	return nil
@@ -159,6 +200,7 @@ func (r *RegistryImpl) Close() error {
 	}
 	r.sessions = make(map[string]Session)
 	r.dests = make(map[string]string)
+	r.mostRecentByStyle = make(map[Style]string)
 	return nil
 }
 

@@ -67,22 +67,31 @@ func (h *RawHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Resp
 //   - FROM_PORT, TO_PORT, PROTOCOL override session defaults (SAM 3.2+)
 //   - Does not support DATAGRAM2/DATAGRAM3 formats
 func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Require bound session
-	if ctx.Session == nil {
-		return rawError("no session bound"), nil
+	// Per SAMv3.md: "RAW SEND... sends to the most recently created
+	// RAW-style session, as appropriate."
+	// First try the bound session, then fall back to registry lookup.
+	var rawSess session.RawSession
+	var ok bool
+
+	if ctx.Session != nil {
+		// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
+		// on a primary session or on subsessions"
+		if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
+			return rawError("RAW SEND not supported on PRIMARY sessions; use UDP socket"), nil
+		}
+
+		rawSess, ok = ctx.Session.(session.RawSession)
 	}
 
-	// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
-	// on a primary session or on subsessions"
-	// RAW SEND is a V1/V2 command - reject on PRIMARY sessions
-	if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
-		return rawError("RAW SEND not supported on PRIMARY sessions; use UDP socket"), nil
+	// If bound session is not RAW style, try most recently created
+	if !ok && ctx.Registry != nil {
+		if mostRecent := ctx.Registry.MostRecentByStyle(session.StyleRaw); mostRecent != nil {
+			rawSess, ok = mostRecent.(session.RawSession)
+		}
 	}
 
-	// Verify session is RAW style
-	rawSess, ok := ctx.Session.(session.RawSession)
-	if !ok {
-		return rawError("session is not STYLE=RAW"), nil
+	if !ok || rawSess == nil {
+		return rawError("no RAW session available"), nil
 	}
 
 	// Parse required DESTINATION

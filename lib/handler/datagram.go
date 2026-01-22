@@ -70,22 +70,31 @@ func (h *DatagramHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol
 //   - SAM 3.3 options: SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET
 //     (parsed but not yet fully implemented pending go-datagrams integration)
 func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Require bound session
-	if ctx.Session == nil {
-		return datagramError("no session bound"), nil
+	// Per SAMv3.md: "DATAGRAM SEND... sends to the most recently created
+	// DATAGRAM-style session, as appropriate."
+	// First try the bound session, then fall back to registry lookup.
+	var dgSess session.DatagramSession
+	var ok bool
+
+	if ctx.Session != nil {
+		// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
+		// on a primary session or on subsessions"
+		if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
+			return datagramError("DATAGRAM SEND not supported on PRIMARY sessions; use UDP socket"), nil
+		}
+
+		dgSess, ok = ctx.Session.(session.DatagramSession)
 	}
 
-	// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
-	// on a primary session or on subsessions"
-	// DATAGRAM SEND is a V1/V2 command - reject on PRIMARY sessions
-	if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
-		return datagramError("DATAGRAM SEND not supported on PRIMARY sessions; use UDP socket"), nil
+	// If bound session is not DATAGRAM style, try most recently created
+	if !ok && ctx.Registry != nil {
+		if mostRecent := ctx.Registry.MostRecentByStyle(session.StyleDatagram); mostRecent != nil {
+			dgSess, ok = mostRecent.(session.DatagramSession)
+		}
 	}
 
-	// Verify session is DATAGRAM style
-	dgSess, ok := ctx.Session.(session.DatagramSession)
-	if !ok {
-		return datagramError("session is not STYLE=DATAGRAM"), nil
+	if !ok || dgSess == nil {
+		return datagramError("no DATAGRAM session available"), nil
 	}
 
 	// Parse required DESTINATION

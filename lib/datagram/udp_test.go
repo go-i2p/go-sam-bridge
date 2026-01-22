@@ -119,6 +119,13 @@ func (r *mockSessionRegistry) Close() error {
 	return nil
 }
 
+func (r *mockSessionRegistry) MostRecentByStyle(style session.Style) session.Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	// Simple implementation - return nil (no tracking in mock)
+	return nil
+}
+
 // TestNewUDPListener tests UDPListener creation.
 func TestNewUDPListener(t *testing.T) {
 	registry := newMockSessionRegistry()
