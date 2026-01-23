@@ -94,52 +94,79 @@ func (p *PrimarySessionImpl) AddSubsession(id string, style Style, opts Subsessi
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Validate primary session is active
+	// Validate preconditions
+	if err := p.validateAddSubsession(id, style, opts); err != nil {
+		return nil, err
+	}
+
+	// Apply default options per SAM spec
+	p.applySubsessionDefaults(&opts, style)
+
+	// Validate and reserve routing
+	routingKey, err := p.validateSubsessionRouting(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the subsession
+	sess, err := p.createSubsession(id, style, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Register the subsession
+	p.registerSubsession(id, sess, routingKey, opts)
+
+	return sess, nil
+}
+
+// validateAddSubsession checks preconditions for adding a subsession.
+func (p *PrimarySessionImpl) validateAddSubsession(id string, style Style, opts SubsessionOptions) error {
 	if p.Status() != StatusActive {
-		return nil, ErrSessionNotActive
+		return ErrSessionNotActive
 	}
 
-	// Check for duplicate subsession ID
 	if _, exists := p.subsessions[id]; exists {
-		return nil, ErrDuplicateSubsessionID
+		return ErrDuplicateSubsessionID
 	}
 
-	// Validate style is valid for subsession (not PRIMARY/MASTER)
 	if style.IsPrimary() {
-		return nil, ErrInvalidSubsessionStyle
+		return ErrInvalidSubsessionStyle
 	}
 
 	// Validate RAW-specific options
-	if style == StyleRaw {
-		// LISTEN_PROTOCOL=6 (streaming) is disallowed for RAW
-		if opts.ListenProtocol == 6 {
-			return nil, ErrProtocol6Disallowed
-		}
+	if style == StyleRaw && opts.ListenProtocol == 6 {
+		return ErrProtocol6Disallowed
 	}
+	return nil
+}
 
-	// Per SAM spec: If LISTEN_PORT is not specified, default to FROM_PORT.
-	// If neither is specified, routing is based on STYLE and PROTOCOL alone.
+// applySubsessionDefaults applies default values per SAM spec.
+func (p *PrimarySessionImpl) applySubsessionDefaults(opts *SubsessionOptions, style Style) {
+	// Per SAM spec: If LISTEN_PORT is not specified, default to FROM_PORT
 	if opts.ListenPort == 0 && opts.FromPort != 0 {
 		opts.ListenPort = opts.FromPort
 	}
 
-	// Per SAM spec: For RAW, if LISTEN_PROTOCOL is not specified, default to PROTOCOL.
+	// Per SAM spec: For RAW, if LISTEN_PROTOCOL is not specified, default to PROTOCOL
 	if style == StyleRaw && opts.ListenProtocol == 0 && opts.Protocol != 0 {
 		opts.ListenProtocol = opts.Protocol
 	}
+}
 
-	// Validate routing doesn't conflict
+// validateSubsessionRouting checks for routing conflicts.
+func (p *PrimarySessionImpl) validateSubsessionRouting(opts SubsessionOptions) (string, error) {
 	routingKey := p.makeRoutingKey(opts.ListenPort, opts.ListenProtocol)
 	if existing, exists := p.routingTable[routingKey]; exists {
-		return nil, fmt.Errorf("%w: conflicts with subsession %s", ErrRoutingConflict, existing)
+		return "", fmt.Errorf("%w: conflicts with subsession %s", ErrRoutingConflict, existing)
 	}
+	return routingKey, nil
+}
 
-	// Create session config for subsession
+// createSubsession creates the appropriate session type for the subsession.
+func (p *PrimarySessionImpl) createSubsession(id string, style Style, opts SubsessionOptions) (Session, error) {
 	cfg := p.createSubsessionConfig(opts)
 
-	// Create the appropriate session type
-	// For subsessions, we pass nil for I2CP session and stream manager
-	// since the primary session handles tunnel management
 	var sess Session
 	switch style {
 	case StyleStream:
@@ -168,11 +195,12 @@ func (p *PrimarySessionImpl) AddSubsession(id string, style Style, opts Subsessi
 			}
 		}
 	}
+	return sess, nil
+}
 
-	// Store subsession
+// registerSubsession stores the subsession and sets up routing.
+func (p *PrimarySessionImpl) registerSubsession(id string, sess Session, routingKey string, opts SubsessionOptions) {
 	p.subsessions[id] = sess
-
-	// Add routing entry
 	p.routingTable[routingKey] = id
 
 	// Track default subsession (LISTEN_PORT=0 and LISTEN_PROTOCOL=0)
@@ -184,8 +212,6 @@ func (p *PrimarySessionImpl) AddSubsession(id string, style Style, opts Subsessi
 	if activatable, ok := sess.(interface{ SetStatus(Status) }); ok {
 		activatable.SetStatus(StatusActive)
 	}
-
-	return sess, nil
 }
 
 // RemoveSubsession terminates and removes a subsession by ID.

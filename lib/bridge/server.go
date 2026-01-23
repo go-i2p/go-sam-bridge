@@ -148,7 +148,6 @@ func (s *Server) handleConnection(conn net.Conn) {
 		c.Close()
 	}()
 
-	// Create handler context
 	ctx := handler.NewContext(conn, s.registry)
 
 	// Command loop
@@ -157,66 +156,93 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		// Check for PONG timeout (if we sent a PING and are waiting for PONG)
+		// Check for PONG timeout
 		if c.IsPongOverdue(s.config.Timeouts.PongTimeout) {
 			s.sendPongTimeoutError(c)
 			return
 		}
 
-		// Set read deadline based on state
-		deadline := s.getDeadline(c)
-		if !deadline.IsZero() {
-			if err := c.SetReadDeadline(deadline); err != nil {
-				return
-			}
-		}
-
-		// Read command line
-		line, err := s.readLine(c.Reader())
-		if err != nil {
-			// Handle timeout errors with proper SAM responses per SAM 3.2
-			if s.isTimeoutError(err) {
-				s.sendTimeoutError(c)
-			}
+		// Read and parse command
+		cmd, shouldReturn := s.readAndParseCommand(c)
+		if shouldReturn {
 			return
 		}
+		if cmd == nil {
+			continue // Parse error, already handled
+		}
 
-		c.UpdateActivity()
-
-		// Parse command
-		cmd, err := s.parser.Parse(line)
-		if err != nil {
-			s.sendParseError(c, err)
+		// Handle PONG responses
+		if strings.EqualFold(cmd.Verb, "PONG") {
+			c.ClearPendingPing()
 			continue
 		}
 
-		// Handle PONG responses - clear pending PING
-		if strings.EqualFold(cmd.Verb, "PONG") {
-			c.ClearPendingPing()
-			continue // PONG is handled, no response needed
-		}
-
-		// Handle the command
-		response, err := s.dispatchCommand(ctx, c, cmd)
-		if err != nil {
-			return // Internal error, close connection
-		}
-
-		// Send response if any
-		if response != nil {
-			if err := s.sendResponse(c, response); err != nil {
-				return
-			}
+		// Process command and send response
+		if shouldReturn := s.processCommand(ctx, c, cmd); shouldReturn {
+			return
 		}
 
 		// Update context state from connection
-		if c.Version() != "" && ctx.Version == "" {
-			ctx.Version = c.Version()
-			ctx.HandshakeComplete = true
+		s.syncContextState(ctx, c)
+	}
+}
+
+// readAndParseCommand reads a line and parses it as a SAM command.
+// Returns (cmd, shouldReturn). If shouldReturn is true, caller should return.
+// If cmd is nil and shouldReturn is false, there was a parse error that was handled.
+func (s *Server) readAndParseCommand(c *Connection) (*protocol.Command, bool) {
+	// Set read deadline based on state
+	deadline := s.getDeadline(c)
+	if !deadline.IsZero() {
+		if err := c.SetReadDeadline(deadline); err != nil {
+			return nil, true
 		}
-		if c.IsAuthenticated() {
-			ctx.Authenticated = true
+	}
+
+	// Read command line
+	line, err := s.readLine(c.Reader())
+	if err != nil {
+		if s.isTimeoutError(err) {
+			s.sendTimeoutError(c)
 		}
+		return nil, true
+	}
+
+	c.UpdateActivity()
+
+	// Parse command
+	cmd, err := s.parser.Parse(line)
+	if err != nil {
+		s.sendParseError(c, err)
+		return nil, false
+	}
+	return cmd, false
+}
+
+// processCommand dispatches the command and sends the response.
+// Returns true if the connection should be closed.
+func (s *Server) processCommand(ctx *handler.Context, c *Connection, cmd *protocol.Command) bool {
+	response, err := s.dispatchCommand(ctx, c, cmd)
+	if err != nil {
+		return true // Internal error, close connection
+	}
+
+	if response != nil {
+		if err := s.sendResponse(c, response); err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// syncContextState updates the handler context from connection state.
+func (s *Server) syncContextState(ctx *handler.Context, c *Connection) {
+	if c.Version() != "" && ctx.Version == "" {
+		ctx.Version = c.Version()
+		ctx.HandshakeComplete = true
+	}
+	if c.IsAuthenticated() {
+		ctx.Authenticated = true
 	}
 }
 

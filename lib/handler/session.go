@@ -87,55 +87,26 @@ func (h *SessionHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.
 //	SESSION STATUS RESULT=INVALID_KEY
 //	SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
 func (h *SessionHandler) handleCreate(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Require handshake completion
-	if !ctx.HandshakeComplete {
-		return sessionError("handshake not complete"), nil
+	// Validate preconditions
+	if resp := h.validateCreatePreconditions(ctx); resp != nil {
+		return resp, nil
 	}
 
-	// Session already bound to this connection?
-	if ctx.Session != nil {
-		return sessionError("session already bound to this connection"), nil
+	// Parse and validate required parameters
+	style, id, resp := h.parseCreateRequiredParams(cmd)
+	if resp != nil {
+		return resp, nil
 	}
 
-	// Parse required parameters
-	style := session.Style(cmd.Get("STYLE"))
-	if !style.IsValid() {
-		return sessionError("invalid or missing STYLE"), nil
-	}
-
-	id := cmd.Get("ID")
-	if id == "" {
-		return sessionError("missing ID"), nil
-	}
-
-	// Validate ID contains no whitespace
-	if containsWhitespace(id) {
-		return sessionError("ID may not contain whitespace"), nil
-	}
-
-	// Per SAM spec: Validate style-specific option restrictions
+	// Validate style-specific option restrictions
 	if err := validateStyleOptions(style, cmd); err != nil {
 		return sessionError(err.Error()), nil
 	}
 
 	// Parse destination
-	destSpec := cmd.Get("DESTINATION")
-	if destSpec == "" {
-		return sessionError("missing DESTINATION"), nil
-	}
-
-	var dest *session.Destination
-	var privKeyBase64 string
-	var err error
-
-	if destSpec == "TRANSIENT" {
-		dest, privKeyBase64, err = h.createTransientDest(cmd)
-	} else {
-		dest, privKeyBase64, err = h.parseExistingDest(destSpec)
-	}
-
-	if err != nil {
-		return sessionInvalidKey(err.Error()), nil
+	dest, privKeyBase64, resp := h.parseCreateDestination(cmd)
+	if resp != nil {
+		return resp, nil
 	}
 
 	// Parse session configuration options
@@ -150,60 +121,123 @@ func (h *SessionHandler) handleCreate(ctx *Context, cmd *protocol.Command) (*pro
 		return sessionError(err.Error()), nil
 	}
 
-	// Track I2CP handle for callback (may remain nil if no I2CP provider)
-	var i2cpHandle session.I2CPSessionHandle
-
-	// ISSUE-003: Create I2CP session and wait for tunnels if provider is set.
-	// Per SAMv3.md: "the router builds tunnels before responding with SESSION STATUS.
-	// This could take several seconds."
-	if h.i2cpProvider != nil && h.i2cpProvider.IsConnected() {
-		handle, err := h.createI2CPSession(ctx.Ctx, id, config)
-		if err != nil {
-			newSession.Close()
-			return sessionI2PError(fmt.Sprintf("failed to create I2P session: %v", err)), nil
-		}
-		i2cpHandle = handle
-
-		// Associate I2CP session with the SAM session
-		if baseSession, ok := newSession.(*session.BaseSession); ok {
-			baseSession.SetI2CPSession(i2cpHandle)
-		}
-
-		// Wait for tunnels to be built before returning success
-		tunnelCtx, cancel := context.WithTimeout(ctx.Ctx, h.tunnelBuildTimeout)
-		defer cancel()
-
-		if err := i2cpHandle.WaitForTunnels(tunnelCtx); err != nil {
-			// Close both sessions on timeout/error
-			newSession.Close()
-			return sessionI2PError(fmt.Sprintf("tunnel build failed: %v", err)), nil
-		}
+	// Setup I2CP session and wait for tunnels
+	i2cpHandle, resp := h.setupI2CPSession(ctx, id, config, newSession)
+	if resp != nil {
+		return resp, nil
 	}
 
-	// Register the session
+	// Register and finalize session
+	if resp := h.registerAndFinalizeSession(ctx, newSession, i2cpHandle); resp != nil {
+		return resp, nil
+	}
+
+	return sessionOK(privKeyBase64, id), nil
+}
+
+// validateCreatePreconditions checks handshake and session state.
+func (h *SessionHandler) validateCreatePreconditions(ctx *Context) *protocol.Response {
+	if !ctx.HandshakeComplete {
+		return sessionError("handshake not complete")
+	}
+	if ctx.Session != nil {
+		return sessionError("session already bound to this connection")
+	}
+	return nil
+}
+
+// parseCreateRequiredParams validates and extracts STYLE and ID.
+func (h *SessionHandler) parseCreateRequiredParams(cmd *protocol.Command) (session.Style, string, *protocol.Response) {
+	style := session.Style(cmd.Get("STYLE"))
+	if !style.IsValid() {
+		return "", "", sessionError("invalid or missing STYLE")
+	}
+
+	id := cmd.Get("ID")
+	if id == "" {
+		return "", "", sessionError("missing ID")
+	}
+
+	if containsWhitespace(id) {
+		return "", "", sessionError("ID may not contain whitespace")
+	}
+	return style, id, nil
+}
+
+// parseCreateDestination parses DESTINATION option (TRANSIENT or existing key).
+func (h *SessionHandler) parseCreateDestination(cmd *protocol.Command) (*session.Destination, string, *protocol.Response) {
+	destSpec := cmd.Get("DESTINATION")
+	if destSpec == "" {
+		return nil, "", sessionError("missing DESTINATION")
+	}
+
+	var dest *session.Destination
+	var privKeyBase64 string
+	var err error
+
+	if destSpec == "TRANSIENT" {
+		dest, privKeyBase64, err = h.createTransientDest(cmd)
+	} else {
+		dest, privKeyBase64, err = h.parseExistingDest(destSpec)
+	}
+
+	if err != nil {
+		return nil, "", sessionInvalidKey(err.Error())
+	}
+	return dest, privKeyBase64, nil
+}
+
+// setupI2CPSession creates I2CP session and waits for tunnels if provider is set.
+func (h *SessionHandler) setupI2CPSession(ctx *Context, id string, config *session.SessionConfig, newSession session.Session) (session.I2CPSessionHandle, *protocol.Response) {
+	if h.i2cpProvider == nil || !h.i2cpProvider.IsConnected() {
+		return nil, nil
+	}
+
+	handle, err := h.createI2CPSession(ctx.Ctx, id, config)
+	if err != nil {
+		newSession.Close()
+		return nil, sessionI2PError(fmt.Sprintf("failed to create I2P session: %v", err))
+	}
+
+	// Associate I2CP session with the SAM session
+	if baseSession, ok := newSession.(*session.BaseSession); ok {
+		baseSession.SetI2CPSession(handle)
+	}
+
+	// Wait for tunnels to be built before returning success
+	tunnelCtx, cancel := context.WithTimeout(ctx.Ctx, h.tunnelBuildTimeout)
+	defer cancel()
+
+	if err := handle.WaitForTunnels(tunnelCtx); err != nil {
+		newSession.Close()
+		return nil, sessionI2PError(fmt.Sprintf("tunnel build failed: %v", err))
+	}
+	return handle, nil
+}
+
+// registerAndFinalizeSession registers the session and binds it to the context.
+func (h *SessionHandler) registerAndFinalizeSession(ctx *Context, newSession session.Session, i2cpHandle session.I2CPSessionHandle) *protocol.Response {
 	if ctx.Registry != nil {
 		if err := ctx.Registry.Register(newSession); err != nil {
-			// Clean up session on registration failure
 			newSession.Close()
 			if err == util.ErrDuplicateID {
-				return sessionDuplicatedID(), nil
+				return sessionDuplicatedID()
 			}
 			if err == util.ErrDuplicateDest {
-				return sessionDuplicatedDest(), nil
+				return sessionDuplicatedDest()
 			}
-			return sessionError(err.Error()), nil
+			return sessionError(err.Error())
 		}
 	}
 
 	// Bind session to connection context
 	ctx.BindSession(newSession)
 
-	// Invoke session created callback to wire additional components (e.g., StreamManager)
+	// Invoke session created callback
 	if h.onSessionCreated != nil {
 		h.onSessionCreated(newSession, i2cpHandle)
 	}
-
-	return sessionOK(privKeyBase64, id), nil
+	return nil
 }
 
 // createTransientDest generates a new transient destination.
@@ -504,114 +538,135 @@ func (h *SessionHandler) createDatagram3Session(
 // Returns an error if validation fails.
 func (h *SessionHandler) parseConfig(cmd *protocol.Command, style session.Style) (*session.SessionConfig, error) {
 	config := session.DefaultSessionConfig()
-
-	// Track which options are explicitly parsed so we can collect unparsed ones
 	parsedOptions := make(map[string]bool)
 
-	// Parse tunnel quantities
+	// Parse tunnel configuration
+	h.parseTunnelOptions(cmd, config, parsedOptions)
+
+	// Parse port options (SAM 3.2+)
+	if err := h.parseConfigPortOptions(cmd, config, parsedOptions); err != nil {
+		return nil, err
+	}
+
+	// Parse RAW-specific options
+	if err := h.parseConfigRawOptions(cmd, config, style, parsedOptions); err != nil {
+		return nil, err
+	}
+
+	// Parse UDP options (Java I2P specific)
+	if err := h.parseConfigUDPOptions(cmd, config, parsedOptions); err != nil {
+		return nil, err
+	}
+
+	// Collect unparsed I2CP options for passthrough
+	h.collectI2CPOptions(cmd, config, parsedOptions)
+
+	return config, nil
+}
+
+// parseTunnelOptions extracts tunnel quantity and length options.
+func (h *SessionHandler) parseTunnelOptions(cmd *protocol.Command, config *session.SessionConfig, parsed map[string]bool) {
 	if v := cmd.Get("inbound.quantity"); v != "" {
-		parsedOptions["inbound.quantity"] = true
+		parsed["inbound.quantity"] = true
 		if qty, err := strconv.Atoi(v); err == nil && qty >= 0 {
 			config.InboundQuantity = qty
 		}
 	}
 	if v := cmd.Get("outbound.quantity"); v != "" {
-		parsedOptions["outbound.quantity"] = true
+		parsed["outbound.quantity"] = true
 		if qty, err := strconv.Atoi(v); err == nil && qty >= 0 {
 			config.OutboundQuantity = qty
 		}
 	}
-
-	// Parse tunnel lengths
 	if v := cmd.Get("inbound.length"); v != "" {
-		parsedOptions["inbound.length"] = true
+		parsed["inbound.length"] = true
 		if len, err := strconv.Atoi(v); err == nil && len >= 0 {
 			config.InboundLength = len
 		}
 	}
 	if v := cmd.Get("outbound.length"); v != "" {
-		parsedOptions["outbound.length"] = true
+		parsed["outbound.length"] = true
 		if len, err := strconv.Atoi(v); err == nil && len >= 0 {
 			config.OutboundLength = len
 		}
 	}
+}
 
-	// Parse and validate ports (SAM 3.2+)
+// parseConfigPortOptions extracts and validates FROM_PORT and TO_PORT (SAM 3.2+).
+func (h *SessionHandler) parseConfigPortOptions(cmd *protocol.Command, config *session.SessionConfig, parsed map[string]bool) error {
 	if v := cmd.Get("FROM_PORT"); v != "" {
-		parsedOptions["FROM_PORT"] = true
+		parsed["FROM_PORT"] = true
 		port, err := protocol.ValidatePortString(v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid FROM_PORT: %w", err)
+			return fmt.Errorf("invalid FROM_PORT: %w", err)
 		}
 		config.FromPort = port
 	}
 	if v := cmd.Get("TO_PORT"); v != "" {
-		parsedOptions["TO_PORT"] = true
+		parsed["TO_PORT"] = true
 		port, err := protocol.ValidatePortString(v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid TO_PORT: %w", err)
+			return fmt.Errorf("invalid TO_PORT: %w", err)
 		}
 		config.ToPort = port
 	}
+	return nil
+}
 
-	// Parse and validate RAW-specific options
-	// PROTOCOL is only valid for STYLE=RAW per SAM 3.2 specification
+// parseConfigRawOptions extracts RAW-specific options (PROTOCOL, HEADER).
+func (h *SessionHandler) parseConfigRawOptions(cmd *protocol.Command, config *session.SessionConfig, style session.Style, parsed map[string]bool) error {
 	if v := cmd.Get("PROTOCOL"); v != "" {
-		parsedOptions["PROTOCOL"] = true
+		parsed["PROTOCOL"] = true
 		if style != session.StyleRaw {
-			return nil, fmt.Errorf("PROTOCOL option is only valid for STYLE=RAW")
+			return fmt.Errorf("PROTOCOL option is only valid for STYLE=RAW")
 		}
 		proto, err := protocol.ValidateProtocolString(v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid PROTOCOL: %w", err)
+			return fmt.Errorf("invalid PROTOCOL: %w", err)
 		}
 		config.Protocol = proto
 	}
 
-	// HEADER is only valid for STYLE=RAW per SAM 3.2 specification
 	if v := cmd.Get("HEADER"); v != "" {
-		parsedOptions["HEADER"] = true
+		parsed["HEADER"] = true
 		if style != session.StyleRaw {
-			return nil, fmt.Errorf("HEADER option is only valid for STYLE=RAW")
+			return fmt.Errorf("HEADER option is only valid for STYLE=RAW")
 		}
 		config.HeaderEnabled = (v == "true")
 	}
+	return nil
+}
 
-	// Parse sam.udp.host and sam.udp.port options (Java I2P specific)
-	// Per SAMv3.md: These options configure the UDP datagram binding for DATAGRAM sessions.
-	// ISSUE-004: Previously these were passed through but not explicitly parsed.
+// parseConfigUDPOptions extracts sam.udp.host and sam.udp.port options (Java I2P specific).
+func (h *SessionHandler) parseConfigUDPOptions(cmd *protocol.Command, config *session.SessionConfig, parsed map[string]bool) error {
 	if v := cmd.Get("sam.udp.host"); v != "" {
-		parsedOptions["sam.udp.host"] = true
+		parsed["sam.udp.host"] = true
 		config.SamUDPHost = v
 	}
 	if v := cmd.Get("sam.udp.port"); v != "" {
-		parsedOptions["sam.udp.port"] = true
+		parsed["sam.udp.port"] = true
 		port, err := protocol.ValidatePortString(v)
 		if err != nil {
-			return nil, fmt.Errorf("invalid sam.udp.port: %w", err)
+			return fmt.Errorf("invalid sam.udp.port: %w", err)
 		}
 		config.SamUDPPort = port
 	}
+	return nil
+}
 
-	// Collect unparsed i2cp.* and streaming.* options for I2CP passthrough.
-	// Per SAMv3.md: "Additional options given are passed to the I2P session
-	// configuration (see I2CP options)."
+// collectI2CPOptions gathers unparsed i2cp.* and streaming.* options for I2CP passthrough.
+func (h *SessionHandler) collectI2CPOptions(cmd *protocol.Command, config *session.SessionConfig, parsed map[string]bool) {
 	for key, value := range cmd.Options {
-		// Skip options that were explicitly parsed above
-		if parsedOptions[key] {
+		if parsed[key] {
 			continue
 		}
-		// Skip standard SAM command options that aren't I2CP options
 		if isStandardSAMOption(key) {
 			continue
 		}
-		// Store i2cp.*, streaming.*, inbound.*, outbound.* options
 		if isI2CPOption(key) {
 			config.I2CPOptions[key] = value
 		}
 	}
-
-	return config, nil
 }
 
 // containsWhitespace checks if a string contains any whitespace.
@@ -805,103 +860,141 @@ func (h *SessionHandler) handleRemove(ctx *Context, cmd *protocol.Command) (*pro
 func (h *SessionHandler) parseSubsessionOptions(cmd *protocol.Command, style session.Style) (*session.SubsessionOptions, error) {
 	opts := &session.SubsessionOptions{}
 
-	// Parse PORT (required for DATAGRAM*/RAW, invalid for STREAM)
+	// Parse PORT and HOST (DATAGRAM*/RAW only)
+	if err := h.parseSubsessionPortHost(cmd, opts, style); err != nil {
+		return nil, err
+	}
+
+	// Parse traffic ports (FROM_PORT, TO_PORT)
+	if err := h.parseSubsessionTrafficPorts(cmd, opts); err != nil {
+		return nil, err
+	}
+
+	// Parse PROTOCOL (RAW only)
+	if err := h.parseSubsessionProtocol(cmd, opts, style); err != nil {
+		return nil, err
+	}
+
+	// Parse listen options (LISTEN_PORT, LISTEN_PROTOCOL)
+	if err := h.parseSubsessionListenOptions(cmd, opts, style); err != nil {
+		return nil, err
+	}
+
+	// Parse HEADER (RAW only)
+	if err := h.parseSubsessionHeader(cmd, opts, style); err != nil {
+		return nil, err
+	}
+
+	return opts, nil
+}
+
+// parseSubsessionPortHost extracts PORT and HOST options.
+func (h *SessionHandler) parseSubsessionPortHost(cmd *protocol.Command, opts *session.SubsessionOptions, style session.Style) error {
 	if portStr := cmd.Get("PORT"); portStr != "" {
 		if style == session.StyleStream {
-			return nil, fmt.Errorf("PORT is invalid for STYLE=STREAM")
+			return fmt.Errorf("PORT is invalid for STYLE=STREAM")
 		}
 		port, err := protocol.ValidatePortString(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid PORT: %w", err)
+			return fmt.Errorf("invalid PORT: %w", err)
 		}
 		opts.Port = port
 	}
 
-	// Parse HOST (optional for DATAGRAM*/RAW, invalid for STREAM)
 	if host := cmd.Get("HOST"); host != "" {
 		if style == session.StyleStream {
-			return nil, fmt.Errorf("HOST is invalid for STYLE=STREAM")
+			return fmt.Errorf("HOST is invalid for STYLE=STREAM")
 		}
 		opts.Host = host
 	} else if style != session.StyleStream {
 		opts.Host = "127.0.0.1" // Default per SAM spec
 	}
+	return nil
+}
 
-	// Parse FROM_PORT (outbound traffic)
+// parseSubsessionTrafficPorts extracts FROM_PORT and TO_PORT options.
+func (h *SessionHandler) parseSubsessionTrafficPorts(cmd *protocol.Command, opts *session.SubsessionOptions) error {
 	if portStr := cmd.Get("FROM_PORT"); portStr != "" {
 		port, err := protocol.ValidatePortString(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid FROM_PORT: %w", err)
+			return fmt.Errorf("invalid FROM_PORT: %w", err)
 		}
 		opts.FromPort = port
 	}
 
-	// Parse TO_PORT (outbound traffic)
 	if portStr := cmd.Get("TO_PORT"); portStr != "" {
 		port, err := protocol.ValidatePortString(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid TO_PORT: %w", err)
+			return fmt.Errorf("invalid TO_PORT: %w", err)
 		}
 		opts.ToPort = port
 	}
+	return nil
+}
 
-	// Parse PROTOCOL (RAW only)
+// parseSubsessionProtocol extracts PROTOCOL option (RAW only).
+func (h *SessionHandler) parseSubsessionProtocol(cmd *protocol.Command, opts *session.SubsessionOptions, style session.Style) error {
 	if protoStr := cmd.Get("PROTOCOL"); protoStr != "" {
 		if style != session.StyleRaw {
-			return nil, fmt.Errorf("PROTOCOL is only valid for STYLE=RAW")
+			return fmt.Errorf("PROTOCOL is only valid for STYLE=RAW")
 		}
 		proto, err := protocol.ValidateProtocolString(protoStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid PROTOCOL: %w", err)
+			return fmt.Errorf("invalid PROTOCOL: %w", err)
 		}
 		opts.Protocol = proto
 	} else if style == session.StyleRaw {
 		opts.Protocol = 18 // Default per SAM spec
 	}
+	return nil
+}
 
-	// Parse LISTEN_PORT (inbound traffic)
-	// Default is FROM_PORT value
+// parseSubsessionListenOptions extracts LISTEN_PORT and LISTEN_PROTOCOL options.
+func (h *SessionHandler) parseSubsessionListenOptions(cmd *protocol.Command, opts *session.SubsessionOptions, style session.Style) error {
+	// Parse LISTEN_PORT - default is FROM_PORT value
 	if portStr := cmd.Get("LISTEN_PORT"); portStr != "" {
 		port, err := protocol.ValidatePortString(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid LISTEN_PORT: %w", err)
+			return fmt.Errorf("invalid LISTEN_PORT: %w", err)
 		}
 		// For STREAM, only FROM_PORT value or 0 is allowed
 		if style == session.StyleStream && port != 0 && port != opts.FromPort {
-			return nil, fmt.Errorf("LISTEN_PORT must be 0 or FROM_PORT value for STYLE=STREAM")
+			return fmt.Errorf("LISTEN_PORT must be 0 or FROM_PORT value for STYLE=STREAM")
 		}
 		opts.ListenPort = port
 	} else {
 		opts.ListenPort = opts.FromPort // Default per spec
 	}
 
-	// Parse LISTEN_PROTOCOL (RAW only)
-	// Default is PROTOCOL value; 6 (streaming) is disallowed
+	// Parse LISTEN_PROTOCOL (RAW only) - default is PROTOCOL value; 6 is disallowed
 	if protoStr := cmd.Get("LISTEN_PROTOCOL"); protoStr != "" {
 		if style != session.StyleRaw {
-			return nil, fmt.Errorf("LISTEN_PROTOCOL is only valid for STYLE=RAW")
+			return fmt.Errorf("LISTEN_PROTOCOL is only valid for STYLE=RAW")
 		}
 		proto, err := protocol.ValidateProtocolString(protoStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid LISTEN_PROTOCOL: %w", err)
+			return fmt.Errorf("invalid LISTEN_PROTOCOL: %w", err)
 		}
 		if proto == 6 {
-			return nil, fmt.Errorf("LISTEN_PROTOCOL=6 (streaming) is disallowed for RAW")
+			return fmt.Errorf("LISTEN_PROTOCOL=6 (streaming) is disallowed for RAW")
 		}
 		opts.ListenProtocol = proto
 	} else if style == session.StyleRaw {
 		opts.ListenProtocol = opts.Protocol // Default per spec
 	}
+	return nil
+}
 
-	// Parse HEADER (RAW only)
+// parseSubsessionHeader extracts HEADER option (RAW only).
+func (h *SessionHandler) parseSubsessionHeader(cmd *protocol.Command, opts *session.SubsessionOptions, style session.Style) error {
 	if headerStr := cmd.Get("HEADER"); headerStr != "" {
 		if style != session.StyleRaw {
-			return nil, fmt.Errorf("HEADER is only valid for STYLE=RAW")
+			return fmt.Errorf("HEADER is only valid for STYLE=RAW")
 		}
 		opts.HeaderEnabled = (headerStr == "true")
 	}
 
-	return opts, nil
+	return nil
 }
 
 // sessionDuplicatedDest returns a DUPLICATED_DEST response.

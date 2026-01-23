@@ -190,25 +190,43 @@ func (s *StreamSessionImpl) Connect(dest string, opts ConnectOptions) (net.Conn,
 //
 // Followed by peer destination unless SILENT=true.
 func (s *StreamSessionImpl) Accept(opts AcceptOptions) (net.Conn, string, error) {
+	// Validate and get listener
+	listener, err := s.prepareForAccept()
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Accept connection with optional timeout
+	conn, err := s.acceptWithTimeout(listener, opts.Timeout)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Get peer destination and track connection
+	peerDest := s.trackAcceptedConnection(conn)
+
+	return conn, peerDest, nil
+}
+
+// prepareForAccept validates session state and returns the listener.
+func (s *StreamSessionImpl) prepareForAccept() (net.Listener, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.Status() != StatusActive {
-		s.mu.Unlock()
-		return nil, "", ErrSessionNotActive
+		return nil, ErrSessionNotActive
 	}
 
 	if s.forwardingEnabled {
-		s.mu.Unlock()
-		return nil, "", errors.New("cannot ACCEPT when FORWARD is active")
+		return nil, errors.New("cannot ACCEPT when FORWARD is active")
 	}
 
 	// Create listener if not already created
 	if s.listener == nil {
 		if s.streamManager == nil {
-			s.mu.Unlock()
-			return nil, "", errors.New("stream manager not initialized")
+			return nil, errors.New("stream manager not initialized")
 		}
 
-		// Use default port 0 if not specified
 		localPort := uint16(0)
 		if cfg := s.Config(); cfg != nil {
 			localPort = uint16(cfg.FromPort)
@@ -216,55 +234,65 @@ func (s *StreamSessionImpl) Accept(opts AcceptOptions) (net.Conn, string, error)
 
 		listener, err := streaming.ListenWithManager(s.streamManager, localPort, streaming.DefaultMTU)
 		if err != nil {
-			s.mu.Unlock()
-			return nil, "", fmt.Errorf("failed to create listener: %w", err)
+			return nil, fmt.Errorf("failed to create listener: %w", err)
 		}
 		s.listener = listener
 	}
-	listener := s.listener
-	s.mu.Unlock()
+	return s.listener, nil
+}
 
-	// Accept with optional timeout
-	var conn net.Conn
-	var err error
-
-	if opts.Timeout > 0 {
-		// Create a channel-based timeout
-		done := make(chan struct{})
-		go func() {
-			conn, err = listener.Accept()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Accept completed
-		case <-time.After(opts.Timeout):
-			return nil, "", errors.New("accept timeout")
-		case <-s.ctx.Done():
-			return nil, "", s.ctx.Err()
-		}
-	} else {
-		conn, err = listener.Accept()
+// acceptWithTimeout accepts a connection with optional timeout.
+func (s *StreamSessionImpl) acceptWithTimeout(listener net.Listener, timeout time.Duration) (net.Conn, error) {
+	if timeout > 0 {
+		return s.acceptWithTimeoutImpl(listener, timeout)
 	}
 
+	conn, err := listener.Accept()
 	if err != nil {
-		return nil, "", fmt.Errorf("accept failed: %w", err)
+		return nil, fmt.Errorf("accept failed: %w", err)
+	}
+	return conn, nil
+}
+
+// acceptWithTimeoutImpl handles timeout-based accept using channels.
+func (s *StreamSessionImpl) acceptWithTimeoutImpl(listener net.Listener, timeout time.Duration) (net.Conn, error) {
+	type acceptResult struct {
+		conn net.Conn
+		err  error
 	}
 
-	// Get peer destination
+	done := make(chan acceptResult, 1)
+	go func() {
+		conn, err := listener.Accept()
+		done <- acceptResult{conn, err}
+	}()
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			return nil, fmt.Errorf("accept failed: %w", result.err)
+		}
+		return result.conn, nil
+	case <-time.After(timeout):
+		return nil, errors.New("accept timeout")
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	}
+}
+
+// trackAcceptedConnection extracts peer destination and tracks the connection.
+func (s *StreamSessionImpl) trackAcceptedConnection(conn net.Conn) string {
 	peerDest := ""
 	if remoteAddr := conn.RemoteAddr(); remoteAddr != nil {
 		peerDest = remoteAddr.String()
 	}
 
-	// Track the connection
 	connID := fmt.Sprintf("incoming-%d", time.Now().UnixNano())
 	s.activeConnsMu.Lock()
 	s.activeConns[connID] = conn
 	s.activeConnsMu.Unlock()
 
-	return conn, peerDest, nil
+	return peerDest
 }
 
 // IncrementPendingAccepts atomically increments the pending accept counter.

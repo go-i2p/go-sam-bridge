@@ -67,9 +67,55 @@ func (h *RawHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Resp
 //   - FROM_PORT, TO_PORT, PROTOCOL override session defaults (SAM 3.2+)
 //   - Does not support DATAGRAM2/DATAGRAM3 formats
 func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Per SAMv3.md: "RAW SEND... sends to the most recently created
-	// RAW-style session, as appropriate."
-	// First try the bound session, then fall back to registry lookup.
+	// Lookup RAW session
+	rawSess, resp := h.lookupRawSession(ctx)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse and validate required parameters
+	dest, size, resp := h.parseRequiredParams(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse port options (SAM 3.2+)
+	fromPort, toPort, resp := h.parsePortOptions(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse protocol option
+	protocolNum, resp := h.parseProtocolOption(cmd, rawSess.Protocol())
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse SAM 3.3 options
+	sam33Opts, resp := h.parseSAM33Options(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Validate payload size
+	data := cmd.Payload
+	if len(data) != size {
+		return rawError(fmt.Sprintf("payload size mismatch: expected %d, got %d", size, len(data))), nil
+	}
+
+	// Build send options and send
+	opts := h.buildSendOptions(fromPort, toPort, protocolNum, sam33Opts)
+	if err := rawSess.Send(dest, data, opts); err != nil {
+		return rawError("send failed: " + err.Error()), nil
+	}
+
+	// No response on success per SAMv3.md
+	return nil, nil
+}
+
+// lookupRawSession finds the appropriate RAW session for sending.
+// Per SAMv3.md, tries bound session first, then most recently created.
+func (h *RawHandler) lookupRawSession(ctx *Context) (session.RawSession, *protocol.Response) {
 	var rawSess session.RawSession
 	var ok bool
 
@@ -77,9 +123,8 @@ func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.
 		// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
 		// on a primary session or on subsessions"
 		if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
-			return rawError("RAW SEND not supported on PRIMARY sessions; use UDP socket"), nil
+			return nil, rawError("RAW SEND not supported on PRIMARY sessions; use UDP socket")
 		}
-
 		rawSess, ok = ctx.Session.(session.RawSession)
 	}
 
@@ -91,120 +136,125 @@ func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.
 	}
 
 	if !ok || rawSess == nil {
-		return rawError("no RAW session available"), nil
+		return nil, rawError("no RAW session available")
 	}
+	return rawSess, nil
+}
 
-	// Parse required DESTINATION
+// parseRequiredParams validates and extracts DESTINATION and SIZE from the command.
+func (h *RawHandler) parseRequiredParams(cmd *protocol.Command) (string, int, *protocol.Response) {
 	dest := cmd.Get("DESTINATION")
 	if dest == "" {
-		return rawInvalidKey("missing DESTINATION"), nil
+		return "", 0, rawInvalidKey("missing DESTINATION")
 	}
 
-	// Parse required SIZE
 	sizeStr := cmd.Get("SIZE")
 	if sizeStr == "" {
-		return rawInvalidKey("missing SIZE"), nil
+		return "", 0, rawInvalidKey("missing SIZE")
 	}
 	size, err := strconv.Atoi(sizeStr)
 	if err != nil || size < 1 {
-		return rawInvalidKey("invalid SIZE: must be positive integer"), nil
+		return "", 0, rawInvalidKey("invalid SIZE: must be positive integer")
 	}
 	if size > session.MaxRawDatagramSize {
-		return rawInvalidKey(fmt.Sprintf("SIZE exceeds maximum (%d)", session.MaxRawDatagramSize)), nil
+		return "", 0, rawInvalidKey(fmt.Sprintf("SIZE exceeds maximum (%d)", session.MaxRawDatagramSize))
 	}
+	return dest, size, nil
+}
 
-	// Parse optional FROM_PORT (SAM 3.2+)
-	fromPort := 0
+// parsePortOptions extracts FROM_PORT and TO_PORT from the command (SAM 3.2+).
+func (h *RawHandler) parsePortOptions(cmd *protocol.Command) (int, int, *protocol.Response) {
+	var fromPort, toPort int
+	var err error
+
 	if fromPortStr := cmd.Get("FROM_PORT"); fromPortStr != "" {
 		fromPort, err = parsePort(fromPortStr, "FROM_PORT")
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return 0, 0, rawInvalidKey(err.Error())
 		}
 	}
 
-	// Parse optional TO_PORT (SAM 3.2+)
-	toPort := 0
 	if toPortStr := cmd.Get("TO_PORT"); toPortStr != "" {
 		toPort, err = parsePort(toPortStr, "TO_PORT")
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return 0, 0, rawInvalidKey(err.Error())
 		}
 	}
+	return fromPort, toPort, nil
+}
 
-	// Parse optional PROTOCOL (SAM 3.2+)
-	protocolNum := rawSess.Protocol() // Default to session protocol
-	if protoStr := cmd.Get("PROTOCOL"); protoStr != "" {
-		protocolNum, err = parseProtocol(protoStr)
-		if err != nil {
-			return rawInvalidKey(err.Error()), nil
-		}
+// parseProtocolOption extracts PROTOCOL from the command (SAM 3.2+).
+func (h *RawHandler) parseProtocolOption(cmd *protocol.Command, defaultProtocol int) (int, *protocol.Response) {
+	protoStr := cmd.Get("PROTOCOL")
+	if protoStr == "" {
+		return defaultProtocol, nil
 	}
+	protocolNum, err := parseProtocol(protoStr)
+	if err != nil {
+		return 0, rawInvalidKey(err.Error())
+	}
+	return protocolNum, nil
+}
 
-	// Parse optional SAM 3.3 options
-	// These are passed to I2CP via SendMessageExpires when go-i2cp integration is complete.
-	// Per SAMv3.md: "Support by the SAM server is optional, it will ignore these
-	// options if unsupported."
-	sendTags := 0
+// rawSAM33Options holds parsed SAM 3.3 options.
+type rawSAM33Options struct {
+	SendTags        int
+	TagThreshold    int
+	Expires         int
+	SendLeaseset    bool
+	SendLeasesetSet bool
+}
+
+// parseSAM33Options extracts SAM 3.3 specific options from the command.
+func (h *RawHandler) parseSAM33Options(cmd *protocol.Command) (*rawSAM33Options, *protocol.Response) {
+	opts := &rawSAM33Options{
+		SendLeaseset: true, // Default per SAMv3.md
+	}
+	var err error
+
 	if sendTagsStr := cmd.Get("SEND_TAGS"); sendTagsStr != "" {
-		sendTags, err = parseRawSAM33Option(sendTagsStr, "SEND_TAGS", 0, 15)
+		opts.SendTags, err = parseRawSAM33Option(sendTagsStr, "SEND_TAGS", 0, 15)
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return nil, rawInvalidKey(err.Error())
 		}
 	}
 
-	tagThreshold := 0
 	if tagThresholdStr := cmd.Get("TAG_THRESHOLD"); tagThresholdStr != "" {
-		tagThreshold, err = parseRawSAM33Option(tagThresholdStr, "TAG_THRESHOLD", 0, 15)
+		opts.TagThreshold, err = parseRawSAM33Option(tagThresholdStr, "TAG_THRESHOLD", 0, 15)
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return nil, rawInvalidKey(err.Error())
 		}
 	}
 
-	expires := 0
 	if expiresStr := cmd.Get("EXPIRES"); expiresStr != "" {
-		expires, err = parseRawSAM33Option(expiresStr, "EXPIRES", 0, 86400) // Max 24 hours
+		opts.Expires, err = parseRawSAM33Option(expiresStr, "EXPIRES", 0, 86400)
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return nil, rawInvalidKey(err.Error())
 		}
 	}
 
-	sendLeaseset := true // Default per SAMv3.md
-	sendLeasesetSet := false
 	if sendLeasesetStr := cmd.Get("SEND_LEASESET"); sendLeasesetStr != "" {
-		sendLeaseset, err = parseRawBoolOption(sendLeasesetStr, "SEND_LEASESET")
+		opts.SendLeaseset, err = parseRawBoolOption(sendLeasesetStr, "SEND_LEASESET")
 		if err != nil {
-			return rawInvalidKey(err.Error()), nil
+			return nil, rawInvalidKey(err.Error())
 		}
-		sendLeasesetSet = true
+		opts.SendLeasesetSet = true
 	}
+	return opts, nil
+}
 
-	// Get payload data from command
-	// NOTE: The actual data follows the command line and is SIZE bytes.
-	// For now, we get it from cmd.Payload which should be populated by the parser.
-	data := cmd.Payload
-	if len(data) != size {
-		return rawError(fmt.Sprintf("payload size mismatch: expected %d, got %d", size, len(data))), nil
-	}
-
-	// Build send options including SAM 3.3 options
-	opts := session.RawSendOptions{
+// buildSendOptions constructs RawSendOptions from parsed parameters.
+func (h *RawHandler) buildSendOptions(fromPort, toPort, protocolNum int, sam33 *rawSAM33Options) session.RawSendOptions {
+	return session.RawSendOptions{
 		FromPort:        fromPort,
 		ToPort:          toPort,
 		Protocol:        protocolNum,
-		SendTags:        sendTags,
-		TagThreshold:    tagThreshold,
-		Expires:         expires,
-		SendLeaseset:    sendLeaseset,
-		SendLeasesetSet: sendLeasesetSet,
+		SendTags:        sam33.SendTags,
+		TagThreshold:    sam33.TagThreshold,
+		Expires:         sam33.Expires,
+		SendLeaseset:    sam33.SendLeaseset,
+		SendLeasesetSet: sam33.SendLeasesetSet,
 	}
-
-	// Send the raw datagram
-	if err := rawSess.Send(dest, data, opts); err != nil {
-		return rawError("send failed: " + err.Error()), nil
-	}
-
-	// No response on success per SAMv3.md
-	return nil, nil
 }
 
 // parsePort validates and parses a port string.

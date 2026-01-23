@@ -70,9 +70,49 @@ func (h *DatagramHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol
 //   - SAM 3.3 options: SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET
 //     (parsed but not yet fully implemented pending go-datagrams integration)
 func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Per SAMv3.md: "DATAGRAM SEND... sends to the most recently created
-	// DATAGRAM-style session, as appropriate."
-	// First try the bound session, then fall back to registry lookup.
+	// Lookup DATAGRAM session
+	dgSess, resp := h.lookupDatagramSession(ctx)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse and validate required parameters
+	dest, size, resp := h.parseDatagramRequiredParams(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse port options (SAM 3.2+)
+	fromPort, toPort, resp := h.parseDatagramPortOptions(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Parse SAM 3.3 options
+	sam33Opts, resp := h.parseDatagramSAM33Options(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	// Validate payload size
+	data := cmd.Payload
+	if len(data) != size {
+		return datagramError(fmt.Sprintf("payload size mismatch: expected %d, got %d", size, len(data))), nil
+	}
+
+	// Build send options and send
+	opts := h.buildDatagramSendOptions(fromPort, toPort, sam33Opts)
+	if err := dgSess.Send(dest, data, opts); err != nil {
+		return datagramError("send failed: " + err.Error()), nil
+	}
+
+	// No response on success per SAMv3.md
+	return nil, nil
+}
+
+// lookupDatagramSession finds the appropriate DATAGRAM session for sending.
+// Per SAMv3.md, tries bound session first, then most recently created.
+func (h *DatagramHandler) lookupDatagramSession(ctx *Context) (session.DatagramSession, *protocol.Response) {
 	var dgSess session.DatagramSession
 	var ok bool
 
@@ -80,9 +120,8 @@ func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*prot
 		// Per SAMv3.md: "v1/v2 datagram/raw sending/receiving are not supported
 		// on a primary session or on subsessions"
 		if _, isPrimary := ctx.Session.(session.PrimarySession); isPrimary {
-			return datagramError("DATAGRAM SEND not supported on PRIMARY sessions; use UDP socket"), nil
+			return nil, datagramError("DATAGRAM SEND not supported on PRIMARY sessions; use UDP socket")
 		}
-
 		dgSess, ok = ctx.Session.(session.DatagramSession)
 	}
 
@@ -94,110 +133,111 @@ func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*prot
 	}
 
 	if !ok || dgSess == nil {
-		return datagramError("no DATAGRAM session available"), nil
+		return nil, datagramError("no DATAGRAM session available")
 	}
+	return dgSess, nil
+}
 
-	// Parse required DESTINATION
+// parseDatagramRequiredParams validates and extracts DESTINATION and SIZE from the command.
+func (h *DatagramHandler) parseDatagramRequiredParams(cmd *protocol.Command) (string, int, *protocol.Response) {
 	dest := cmd.Get("DESTINATION")
 	if dest == "" {
-		return datagramInvalidKey("missing DESTINATION"), nil
+		return "", 0, datagramInvalidKey("missing DESTINATION")
 	}
 
-	// Parse required SIZE
 	sizeStr := cmd.Get("SIZE")
 	if sizeStr == "" {
-		return datagramInvalidKey("missing SIZE"), nil
+		return "", 0, datagramInvalidKey("missing SIZE")
 	}
 	size, err := strconv.Atoi(sizeStr)
 	if err != nil || size < 1 {
-		return datagramInvalidKey("invalid SIZE: must be positive integer"), nil
+		return "", 0, datagramInvalidKey("invalid SIZE: must be positive integer")
 	}
 	if size > session.MaxDatagramSize {
-		return datagramInvalidKey(fmt.Sprintf("SIZE exceeds maximum (%d)", session.MaxDatagramSize)), nil
+		return "", 0, datagramInvalidKey(fmt.Sprintf("SIZE exceeds maximum (%d)", session.MaxDatagramSize))
 	}
+	return dest, size, nil
+}
 
-	// Parse optional FROM_PORT (SAM 3.2+)
-	fromPort := 0
+// parseDatagramPortOptions extracts FROM_PORT and TO_PORT from the command (SAM 3.2+).
+func (h *DatagramHandler) parseDatagramPortOptions(cmd *protocol.Command) (int, int, *protocol.Response) {
+	var fromPort, toPort int
+	var err error
+
 	if fromPortStr := cmd.Get("FROM_PORT"); fromPortStr != "" {
 		fromPort, err = parseDatagramPort(fromPortStr, "FROM_PORT")
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return 0, 0, datagramInvalidKey(err.Error())
 		}
 	}
 
-	// Parse optional TO_PORT (SAM 3.2+)
-	toPort := 0
 	if toPortStr := cmd.Get("TO_PORT"); toPortStr != "" {
 		toPort, err = parseDatagramPort(toPortStr, "TO_PORT")
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return 0, 0, datagramInvalidKey(err.Error())
 		}
 	}
+	return fromPort, toPort, nil
+}
 
-	// Parse optional SAM 3.3 options
-	// These are passed to I2CP via SendMessageExpires when go-i2cp integration is complete.
-	// Per SAMv3.md: "Support by the SAM server is optional, it will ignore these
-	// options if unsupported."
-	sendTags := 0
+// datagramSAM33Options holds parsed SAM 3.3 options for datagrams.
+type datagramSAM33Options struct {
+	SendTags        int
+	TagThreshold    int
+	Expires         int
+	SendLeaseset    bool
+	SendLeasesetSet bool
+}
+
+// parseDatagramSAM33Options extracts SAM 3.3 specific options from the command.
+func (h *DatagramHandler) parseDatagramSAM33Options(cmd *protocol.Command) (*datagramSAM33Options, *protocol.Response) {
+	opts := &datagramSAM33Options{
+		SendLeaseset: true, // Default per SAMv3.md
+	}
+	var err error
+
 	if sendTagsStr := cmd.Get("SEND_TAGS"); sendTagsStr != "" {
-		sendTags, err = parseSAM33Option(sendTagsStr, "SEND_TAGS", 0, 15)
+		opts.SendTags, err = parseSAM33Option(sendTagsStr, "SEND_TAGS", 0, 15)
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return nil, datagramInvalidKey(err.Error())
 		}
 	}
 
-	tagThreshold := 0
 	if tagThresholdStr := cmd.Get("TAG_THRESHOLD"); tagThresholdStr != "" {
-		tagThreshold, err = parseSAM33Option(tagThresholdStr, "TAG_THRESHOLD", 0, 15)
+		opts.TagThreshold, err = parseSAM33Option(tagThresholdStr, "TAG_THRESHOLD", 0, 15)
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return nil, datagramInvalidKey(err.Error())
 		}
 	}
 
-	expires := 0
 	if expiresStr := cmd.Get("EXPIRES"); expiresStr != "" {
-		expires, err = parseSAM33Option(expiresStr, "EXPIRES", 0, 86400) // Max 24 hours
+		opts.Expires, err = parseSAM33Option(expiresStr, "EXPIRES", 0, 86400)
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return nil, datagramInvalidKey(err.Error())
 		}
 	}
 
-	sendLeaseset := true // Default per SAMv3.md
-	sendLeasesetSet := false
 	if sendLeasesetStr := cmd.Get("SEND_LEASESET"); sendLeasesetStr != "" {
-		sendLeaseset, err = parseBoolOption(sendLeasesetStr, "SEND_LEASESET")
+		opts.SendLeaseset, err = parseBoolOption(sendLeasesetStr, "SEND_LEASESET")
 		if err != nil {
-			return datagramInvalidKey(err.Error()), nil
+			return nil, datagramInvalidKey(err.Error())
 		}
-		sendLeasesetSet = true
+		opts.SendLeasesetSet = true
 	}
+	return opts, nil
+}
 
-	// Get payload data from command
-	// NOTE: The actual data follows the command line and is SIZE bytes.
-	// The payload is populated by the parser based on the SIZE option.
-	data := cmd.Payload
-	if len(data) != size {
-		return datagramError(fmt.Sprintf("payload size mismatch: expected %d, got %d", size, len(data))), nil
-	}
-
-	// Build send options including SAM 3.3 options
-	opts := session.DatagramSendOptions{
+// buildDatagramSendOptions constructs DatagramSendOptions from parsed parameters.
+func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort int, sam33 *datagramSAM33Options) session.DatagramSendOptions {
+	return session.DatagramSendOptions{
 		FromPort:        fromPort,
 		ToPort:          toPort,
-		SendTags:        sendTags,
-		TagThreshold:    tagThreshold,
-		Expires:         expires,
-		SendLeaseset:    sendLeaseset,
-		SendLeasesetSet: sendLeasesetSet,
+		SendTags:        sam33.SendTags,
+		TagThreshold:    sam33.TagThreshold,
+		Expires:         sam33.Expires,
+		SendLeaseset:    sam33.SendLeaseset,
+		SendLeasesetSet: sam33.SendLeasesetSet,
 	}
-
-	// Send the datagram
-	if err := dgSess.Send(dest, data, opts); err != nil {
-		return datagramError("send failed: " + err.Error()), nil
-	}
-
-	// No response on success per SAMv3.md
-	return nil, nil
 }
 
 // parseDatagramPort validates and parses a port string.
