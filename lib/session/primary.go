@@ -290,21 +290,35 @@ func (p *PrimarySessionImpl) RouteIncoming(port, protocol int) string {
 	defer p.mu.RUnlock()
 
 	// Try exact match first
+	if id := p.tryExactMatch(port, protocol); id != "" {
+		return id
+	}
+
+	// Try wildcard matches
+	if id := p.tryWildcardMatches(port, protocol); id != "" {
+		return id
+	}
+
+	// Use default subsession if available
+	return p.tryDefaultSubsession(protocol)
+}
+
+// tryExactMatch attempts exact port/protocol routing match.
+func (p *PrimarySessionImpl) tryExactMatch(port, protocol int) string {
 	key := p.makeRoutingKey(port, protocol)
 	if id, exists := p.routingTable[key]; exists {
 		return id
 	}
+	return ""
+}
 
+// tryWildcardMatches attempts wildcard routing matches.
+func (p *PrimarySessionImpl) tryWildcardMatches(port, protocol int) string {
 	// Try port wildcard (any protocol)
-	key = p.makeRoutingKey(port, 0)
+	key := p.makeRoutingKey(port, 0)
 	if id, exists := p.routingTable[key]; exists {
-		// Don't route streaming (6) to RAW sessions
-		if sess := p.subsessions[id]; sess != nil {
-			if protocol == 6 && sess.Style() == StyleRaw {
-				// Skip this, try other matches
-			} else {
-				return id
-			}
+		if !p.isStreamingToRaw(protocol, id) {
+			return id
 		}
 	}
 
@@ -313,19 +327,29 @@ func (p *PrimarySessionImpl) RouteIncoming(port, protocol int) string {
 	if id, exists := p.routingTable[key]; exists {
 		return id
 	}
-
-	// Use default subsession if available
-	if p.defaultSubsession != "" {
-		// Don't route streaming (6) to RAW default
-		if sess := p.subsessions[p.defaultSubsession]; sess != nil {
-			if protocol == 6 && sess.Style() == StyleRaw {
-				return ""
-			}
-			return p.defaultSubsession
-		}
-	}
-
 	return ""
+}
+
+// tryDefaultSubsession attempts to route to default subsession.
+func (p *PrimarySessionImpl) tryDefaultSubsession(protocol int) string {
+	if p.defaultSubsession == "" {
+		return ""
+	}
+	if p.isStreamingToRaw(protocol, p.defaultSubsession) {
+		return ""
+	}
+	return p.defaultSubsession
+}
+
+// isStreamingToRaw checks if streaming protocol would route to RAW session.
+func (p *PrimarySessionImpl) isStreamingToRaw(protocol int, subsessionID string) bool {
+	if protocol != 6 {
+		return false
+	}
+	if sess := p.subsessions[subsessionID]; sess != nil {
+		return sess.Style() == StyleRaw
+	}
+	return false
 }
 
 // Close terminates the primary session and all subsessions.

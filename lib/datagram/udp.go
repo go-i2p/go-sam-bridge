@@ -161,33 +161,41 @@ func (l *UDPListener) receiveLoop() {
 
 	buf := make([]byte, MaxDatagramSize)
 	for {
-		select {
-		case <-l.ctx.Done():
+		if l.shouldStopReceiving() {
 			return
-		default:
 		}
 
-		// Read datagram
-		n, addr, err := l.conn.ReadFrom(buf)
-		if err != nil {
-			// Check if we're shutting down
-			select {
-			case <-l.ctx.Done():
-				return
-			default:
-				// Log error but continue (connection may be temporarily unavailable)
-				continue
-			}
+		data, addr := l.readDatagram(buf)
+		if data != nil {
+			l.handleDatagram(data, addr)
 		}
-
-		if n == 0 {
-			continue
-		}
-
-		// Process datagram in the same goroutine for simplicity
-		// (can be changed to worker pool if performance requires)
-		l.handleDatagram(buf[:n], addr)
 	}
+}
+
+// shouldStopReceiving checks if the receive loop should terminate.
+func (l *UDPListener) shouldStopReceiving() bool {
+	select {
+	case <-l.ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// readDatagram reads a single datagram from the connection.
+// Returns nil data if read fails or is empty.
+func (l *UDPListener) readDatagram(buf []byte) ([]byte, net.Addr) {
+	n, addr, err := l.conn.ReadFrom(buf)
+	if err != nil {
+		if l.shouldStopReceiving() {
+			return nil, nil
+		}
+		return nil, nil
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	return buf[:n], addr
 }
 
 // handleDatagram processes a received UDP datagram.
@@ -410,58 +418,54 @@ func isValidSAMVersion(version string) bool {
 func parseHeaderOption(header *DatagramHeader, token string) error {
 	parts := strings.SplitN(token, "=", 2)
 	if len(parts) != 2 {
-		// Not a key=value pair, ignore
 		return nil
 	}
 
 	key := strings.ToUpper(parts[0])
 	value := parts[1]
 
+	return parseHeaderValue(header, key, value)
+}
+
+// parseHeaderValue parses a header value by key type.
+func parseHeaderValue(header *DatagramHeader, key, value string) error {
 	switch key {
 	case "FROM_PORT":
-		port, err := strconv.Atoi(value)
-		if err != nil || port < 0 || port > 65535 {
-			return ErrInvalidPort
-		}
-		header.FromPort = port
-
+		return parsePortOption(&header.FromPort, value)
 	case "TO_PORT":
-		port, err := strconv.Atoi(value)
-		if err != nil || port < 0 || port > 65535 {
-			return ErrInvalidPort
-		}
-		header.ToPort = port
-
+		return parsePortOption(&header.ToPort, value)
 	case "PROTOCOL":
-		proto, err := strconv.Atoi(value)
-		if err != nil || proto < 0 || proto > 255 {
-			return ErrInvalidProtocol
-		}
-		header.Protocol = proto
-
+		return parseProtocolOption(&header.Protocol, value)
 	case "SEND_TAGS":
-		n, err := strconv.Atoi(value)
-		if err == nil {
-			header.SendTags = n
-		}
-
+		header.SendTags, _ = strconv.Atoi(value)
 	case "TAG_THRESHOLD":
-		n, err := strconv.Atoi(value)
-		if err == nil {
-			header.TagThreshold = n
-		}
-
+		header.TagThreshold, _ = strconv.Atoi(value)
 	case "EXPIRES":
-		n, err := strconv.Atoi(value)
-		if err == nil {
-			header.Expires = n
-		}
-
+		header.Expires, _ = strconv.Atoi(value)
 	case "SEND_LEASESET":
 		val := strings.ToLower(value) == "true"
 		header.SendLeaseSet = &val
 	}
+	return nil
+}
 
+// parsePortOption parses and validates a port value.
+func parsePortOption(target *int, value string) error {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 0 || port > 65535 {
+		return ErrInvalidPort
+	}
+	*target = port
+	return nil
+}
+
+// parseProtocolOption parses and validates a protocol value.
+func parseProtocolOption(target *int, value string) error {
+	proto, err := strconv.Atoi(value)
+	if err != nil || proto < 0 || proto > 255 {
+		return ErrInvalidProtocol
+	}
+	*target = proto
 	return nil
 }
 

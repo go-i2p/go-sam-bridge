@@ -389,42 +389,46 @@ func (s *StreamSessionImpl) forwardLoop(listener net.Listener, host string, port
 	target := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	for {
-		select {
-		case <-s.forwardStop:
+		if s.shouldStopForwarding() {
 			return
-		case <-s.ctx.Done():
-			return
-		default:
 		}
-
-		// Accept incoming connection
-		inConn, err := listener.Accept()
-		if err != nil {
-			// Check if we should stop
-			select {
-			case <-s.forwardStop:
-				return
-			case <-s.ctx.Done():
-				return
-			default:
-				// Log error and continue
-				continue
-			}
-		}
-
-		// Connect to forward target
-		// Per SAMv3.md: "If it is accepted in less than 3 seconds, SAM will accept
-		// the connection from I2P, otherwise it rejects it."
-		outConn, err := net.DialTimeout("tcp", target, ForwardConnectTimeout)
-		if err != nil {
-			inConn.Close()
-			continue
-		}
-
-		// Start bidirectional forwarding
-		s.forwardWg.Add(1)
-		go s.forwardConnection(inConn, outConn)
+		s.acceptAndForward(listener, target)
 	}
+}
+
+// shouldStopForwarding checks if the forwarding loop should terminate.
+func (s *StreamSessionImpl) shouldStopForwarding() bool {
+	select {
+	case <-s.forwardStop:
+		return true
+	case <-s.ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// acceptAndForward accepts a single incoming connection and forwards it.
+// Per SAMv3.md: "If it is accepted in less than 3 seconds, SAM will accept
+// the connection from I2P, otherwise it rejects it."
+func (s *StreamSessionImpl) acceptAndForward(listener net.Listener, target string) {
+	inConn, err := listener.Accept()
+	if err != nil {
+		// Check if we should stop on accept error
+		if s.shouldStopForwarding() {
+			return
+		}
+		return
+	}
+
+	outConn, err := net.DialTimeout("tcp", target, ForwardConnectTimeout)
+	if err != nil {
+		inConn.Close()
+		return
+	}
+
+	s.forwardWg.Add(1)
+	go s.forwardConnection(inConn, outConn)
 }
 
 // forwardConnection forwards data between two connections bidirectionally.

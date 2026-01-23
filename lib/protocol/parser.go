@@ -39,18 +39,12 @@ func NewParser() *Parser {
 // Parse parses a SAM command line into a Command struct.
 // The input should be a single line without the trailing newline.
 func (p *Parser) Parse(line string) (*Command, error) {
-	// Trim trailing newline/carriage return if present
 	line = strings.TrimRight(line, "\r\n")
 
-	// Store raw command for debugging
-	raw := line
-
-	// Validate UTF-8 encoding (SAM 3.2 requirement)
-	if !utf8.ValidString(line) {
-		return nil, ErrInvalidUTF8
+	if err := p.validateLine(line); err != nil {
+		return nil, err
 	}
 
-	// Tokenize the command
 	tokens, err := p.tokenize(line)
 	if err != nil {
 		return nil, err
@@ -60,107 +54,149 @@ func (p *Parser) Parse(line string) (*Command, error) {
 		return nil, ErrEmptyCommand
 	}
 
+	return p.buildCommand(tokens, line)
+}
+
+// validateLine checks if the line is valid UTF-8.
+func (p *Parser) validateLine(line string) error {
+	if !utf8.ValidString(line) {
+		return ErrInvalidUTF8
+	}
+	return nil
+}
+
+// buildCommand constructs a Command from tokens.
+func (p *Parser) buildCommand(tokens []string, raw string) (*Command, error) {
 	cmd := &Command{
 		Options: make(map[string]string),
 		Raw:     raw,
 	}
 
-	// First token is always the verb
-	verb := tokens[0]
-	if p.CaseInsensitive {
-		verb = strings.ToUpper(verb)
-	}
-	cmd.Verb = verb
-
-	// Process remaining tokens
-	tokenIdx := 1
-
-	// Check if second token is an action (doesn't contain '=')
-	if tokenIdx < len(tokens) && !strings.Contains(tokens[tokenIdx], "=") {
-		action := tokens[tokenIdx]
-		// Check if it looks like a known action or just a standalone word
-		// (e.g., PING has optional text after it, not an action)
-		if p.isAction(verb, action) {
-			if p.CaseInsensitive {
-				action = strings.ToUpper(action)
-			}
-			cmd.Action = action
-			tokenIdx++
-		}
-	}
-
-	// Remaining tokens are key=value pairs
-	for ; tokenIdx < len(tokens); tokenIdx++ {
-		token := tokens[tokenIdx]
-		key, value := p.parseKeyValue(token)
-		if key != "" {
-			cmd.Options[key] = value
-		}
-	}
+	cmd.Verb = p.normalizeToken(tokens[0])
+	tokenIdx := p.extractAction(cmd, tokens)
+	p.extractOptions(cmd, tokens, tokenIdx)
 
 	return cmd, nil
 }
 
+// normalizeToken normalizes a token based on case sensitivity setting.
+func (p *Parser) normalizeToken(token string) string {
+	if p.CaseInsensitive {
+		return strings.ToUpper(token)
+	}
+	return token
+}
+
+// extractAction extracts the action from tokens if present.
+// Returns the index to continue processing from.
+func (p *Parser) extractAction(cmd *Command, tokens []string) int {
+	if len(tokens) < 2 {
+		return 1
+	}
+
+	action := tokens[1]
+	if strings.Contains(action, "=") {
+		return 1
+	}
+
+	if p.isAction(cmd.Verb, action) {
+		cmd.Action = p.normalizeToken(action)
+		return 2
+	}
+	return 1
+}
+
+// extractOptions parses key=value pairs from remaining tokens.
+func (p *Parser) extractOptions(cmd *Command, tokens []string, startIdx int) {
+	for i := startIdx; i < len(tokens); i++ {
+		key, value := p.parseKeyValue(tokens[i])
+		if key != "" {
+			cmd.Options[key] = value
+		}
+	}
+}
+
 // tokenize splits a command line into tokens, handling quoted values.
 func (p *Parser) tokenize(line string) ([]string, error) {
-	var tokens []string
-	var current strings.Builder
-	inQuote := false
-	escaped := false
+	t := &tokenizer{}
+	return t.tokenize(line)
+}
 
+// tokenizer holds state during tokenization.
+type tokenizer struct {
+	tokens  []string
+	current strings.Builder
+	inQuote bool
+	escaped bool
+}
+
+// tokenize splits a command line into tokens.
+func (t *tokenizer) tokenize(line string) ([]string, error) {
 	for i := 0; i < len(line); i++ {
-		ch := line[i]
-
-		if escaped {
-			// Handle escape sequences per SAM 3.2
-			switch ch {
-			case '"', '\\':
-				current.WriteByte(ch)
-			default:
-				// Invalid escape - include backslash and character
-				current.WriteByte('\\')
-				current.WriteByte(ch)
-			}
-			escaped = false
-			continue
-		}
-
-		switch ch {
-		case '\\':
-			if inQuote {
-				escaped = true
-			} else {
-				current.WriteByte(ch)
-			}
-
-		case '"':
-			inQuote = !inQuote
-			// Include quote in token to mark it was quoted
-			current.WriteByte(ch)
-
-		case ' ', '\t':
-			if inQuote {
-				current.WriteByte(ch)
-			} else if current.Len() > 0 {
-				tokens = append(tokens, current.String())
-				current.Reset()
-			}
-			// Multiple spaces are allowed per SAM 3.2
-
-		default:
-			current.WriteByte(ch)
+		if err := t.processChar(line[i]); err != nil {
+			return nil, err
 		}
 	}
 
-	if inQuote {
+	if t.inQuote {
 		return nil, ErrUnterminatedQuote
 	}
 
-	if current.Len() > 0 {
-		tokens = append(tokens, current.String())
-	}
+	t.finishToken()
+	return t.tokens, nil
+}
 
-	return tokens, nil
+// processChar processes a single character during tokenization.
+func (t *tokenizer) processChar(ch byte) error {
+	if t.escaped {
+		return t.processEscaped(ch)
+	}
+	return t.processNormal(ch)
+}
+
+// processEscaped handles an escaped character.
+func (t *tokenizer) processEscaped(ch byte) error {
+	switch ch {
+	case '"', '\\':
+		t.current.WriteByte(ch)
+	default:
+		t.current.WriteByte('\\')
+		t.current.WriteByte(ch)
+	}
+	t.escaped = false
+	return nil
+}
+
+// processNormal handles a non-escaped character.
+func (t *tokenizer) processNormal(ch byte) error {
+	switch ch {
+	case '\\':
+		if t.inQuote {
+			t.escaped = true
+		} else {
+			t.current.WriteByte(ch)
+		}
+	case '"':
+		t.inQuote = !t.inQuote
+		t.current.WriteByte(ch)
+	case ' ', '\t':
+		if t.inQuote {
+			t.current.WriteByte(ch)
+		} else {
+			t.finishToken()
+		}
+	default:
+		t.current.WriteByte(ch)
+	}
+	return nil
+}
+
+// finishToken adds the current token to the list and resets.
+func (t *tokenizer) finishToken() {
+	if t.current.Len() > 0 {
+		t.tokens = append(t.tokens, t.current.String())
+		t.current.Reset()
+	}
 }
 
 // parseKeyValue parses a token as a key=value pair.

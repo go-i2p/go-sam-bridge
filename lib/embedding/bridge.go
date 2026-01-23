@@ -51,56 +51,23 @@ var _ Lifecycle = (*Bridge)(nil)
 // Options are applied to a default configuration.
 // Returns an error if configuration is invalid.
 func New(opts ...Option) (*Bridge, error) {
-	// Start with default configuration
-	cfg := DefaultConfig()
-
-	// Apply all options
-	for _, opt := range opts {
-		opt(cfg)
-	}
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
-	// Create dependencies
-	deps := newDependencies(cfg)
-
-	// Create bridge server
-	bridgeConfig := cfg.toBridgeConfig()
-	server, err := bridge.NewServer(bridgeConfig, deps.Registry)
+	cfg, err := buildConfig(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register handlers
-	registrar := cfg.HandlerRegistrar
-	if registrar == nil {
-		registrar = DefaultHandlerRegistrar()
-	}
-	registrar(server.Router(), deps)
+	deps := newDependencies(cfg)
 
-	// Register auth handlers if enabled
-	authStore := server.AuthStore()
-	if authStore != nil && authStore.IsAuthEnabled() {
-		RegisterAuthHandlers(server.Router(), authStore, deps)
+	server, err := createServer(cfg, deps)
+	if err != nil {
+		return nil, err
 	}
 
-	// check if something is already listening on I2CPAddr, if it is not, create an embedded router
-	var embeddedRouter embedded.EmbeddedRouter
-	if checkPortAvailable(bridgeConfig.I2CPAddr) {
-		routercfg := config.DefaultRouterConfig()
-		routercfg.I2CP.Address = bridgeConfig.I2CPAddr
-		var routerErr error
-		embeddedRouter, routerErr = embedded.NewStandardEmbeddedRouter(routercfg)
-		if routerErr != nil {
-			return nil, routerErr
-		}
-		if routerErr = embeddedRouter.Configure(routercfg); routerErr != nil {
-			return nil, routerErr
-		}
+	embeddedRouter, err := createEmbeddedRouter(cfg)
+	if err != nil {
+		return nil, err
 	}
+
 	return &Bridge{
 		config:         cfg,
 		deps:           deps,
@@ -108,6 +75,66 @@ func New(opts ...Option) (*Bridge, error) {
 		embeddedRouter: embeddedRouter,
 		done:           make(chan struct{}),
 	}, nil
+}
+
+// buildConfig creates and validates the bridge configuration.
+func buildConfig(opts []Option) (*Config, error) {
+	cfg := DefaultConfig()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// createServer creates and configures the bridge server.
+func createServer(cfg *Config, deps *Dependencies) (*bridge.Server, error) {
+	bridgeConfig := cfg.toBridgeConfig()
+	server, err := bridge.NewServer(bridgeConfig, deps.Registry)
+	if err != nil {
+		return nil, err
+	}
+
+	registerHandlers(cfg, server, deps)
+	return server, nil
+}
+
+// registerHandlers registers command handlers on the server.
+func registerHandlers(cfg *Config, server *bridge.Server, deps *Dependencies) {
+	registrar := cfg.HandlerRegistrar
+	if registrar == nil {
+		registrar = DefaultHandlerRegistrar()
+	}
+	registrar(server.Router(), deps)
+
+	authStore := server.AuthStore()
+	if authStore != nil && authStore.IsAuthEnabled() {
+		RegisterAuthHandlers(server.Router(), authStore, deps)
+	}
+}
+
+// createEmbeddedRouter creates an embedded router if needed.
+func createEmbeddedRouter(cfg *Config) (embedded.EmbeddedRouter, error) {
+	bridgeConfig := cfg.toBridgeConfig()
+	if !checkPortAvailable(bridgeConfig.I2CPAddr) {
+		return nil, nil
+	}
+
+	routercfg := config.DefaultRouterConfig()
+	routercfg.I2CP.Address = bridgeConfig.I2CPAddr
+
+	router, err := embedded.NewStandardEmbeddedRouter(routercfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := router.Configure(routercfg); err != nil {
+		return nil, err
+	}
+
+	return router, nil
 }
 
 // Start begins serving SAM connections.

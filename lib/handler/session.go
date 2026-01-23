@@ -738,69 +738,88 @@ func sessionDuplicatedID() *protocol.Response {
 // SESSION ADD is only valid on a PRIMARY session's control socket.
 // The subsession uses the destination from the PRIMARY session.
 func (h *SessionHandler) handleAdd(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Require handshake completion
+	primarySession, resp := h.validateAddPreconditions(ctx)
+	if resp != nil {
+		return resp, nil
+	}
+
+	style, id, resp := h.parseAddParams(cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	return h.executeAddSubsession(ctx, primarySession, style, id, cmd)
+}
+
+// validateAddPreconditions validates context state for SESSION ADD.
+func (h *SessionHandler) validateAddPreconditions(ctx *Context) (session.PrimarySession, *protocol.Response) {
 	if !ctx.HandshakeComplete {
-		return sessionError("handshake not complete"), nil
+		return nil, sessionError("handshake not complete")
 	}
 
-	// Must have a bound PRIMARY session
 	if ctx.Session == nil {
-		return sessionError("no session bound to this connection"), nil
+		return nil, sessionError("no session bound to this connection")
 	}
 
-	// Verify session is a PRIMARY session
 	primarySession, ok := ctx.Session.(session.PrimarySession)
 	if !ok {
-		return sessionError("SESSION ADD requires a PRIMARY session"), nil
+		return nil, sessionError("SESSION ADD requires a PRIMARY session")
 	}
 
-	// Verify session is active
 	if ctx.Session.Status() != session.StatusActive {
-		return sessionError("session not active"), nil
+		return nil, sessionError("session not active")
 	}
 
-	// Parse required parameters
+	return primarySession, nil
+}
+
+// parseAddParams parses and validates SESSION ADD parameters.
+func (h *SessionHandler) parseAddParams(cmd *protocol.Command) (session.Style, string, *protocol.Response) {
 	style := session.Style(cmd.Get("STYLE"))
 	if !style.IsValid() {
-		return sessionError("invalid or missing STYLE"), nil
+		return "", "", sessionError("invalid or missing STYLE")
 	}
 
-	// Validate style - cannot add PRIMARY/MASTER subsessions
 	if style.IsPrimary() {
-		return sessionError("cannot create PRIMARY subsession"), nil
+		return "", "", sessionError("cannot create PRIMARY subsession")
 	}
 
 	id := cmd.Get("ID")
 	if id == "" {
-		return sessionError("missing ID"), nil
+		return "", "", sessionError("missing ID")
 	}
 
-	// Validate ID contains no whitespace
 	if containsWhitespace(id) {
-		return sessionError("ID may not contain whitespace"), nil
+		return "", "", sessionError("ID may not contain whitespace")
 	}
 
-	// DESTINATION is not allowed for SESSION ADD - uses PRIMARY's destination
 	if cmd.Get("DESTINATION") != "" {
-		return sessionError("DESTINATION not allowed on SESSION ADD"), nil
+		return "", "", sessionError("DESTINATION not allowed on SESSION ADD")
 	}
 
-	// Parse subsession options
+	return style, id, nil
+}
+
+// executeAddSubsession adds the subsession to the primary session.
+func (h *SessionHandler) executeAddSubsession(
+	ctx *Context,
+	primarySession session.PrimarySession,
+	style session.Style,
+	id string,
+	cmd *protocol.Command,
+) (*protocol.Response, error) {
 	subOptions, err := h.parseSubsessionOptions(cmd, style)
 	if err != nil {
 		return sessionError(err.Error()), nil
 	}
 
-	// Add the subsession
 	if _, err := primarySession.AddSubsession(id, style, *subOptions); err != nil {
-		// Check for duplicate ID (from either util package or session package)
 		if err == util.ErrDuplicateID || err == session.ErrDuplicateSubsessionID {
 			return sessionDuplicatedID(), nil
 		}
 		return sessionError(err.Error()), nil
 	}
 
-	// Get destination from PRIMARY session for response
 	dest := ctx.Session.Destination()
 	destBase64 := string(dest.PublicKey)
 

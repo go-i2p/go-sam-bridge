@@ -97,66 +97,82 @@ func (h *StreamHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.R
 // If the connection succeeds, all remaining data passing through the current
 // socket is forwarded from and to the connected I2P destination peer."
 func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Parse required parameters
+	params, resp := h.parseConnectParams(ctx, cmd)
+	if resp != nil {
+		return resp, nil
+	}
+
+	return h.executeConnect(params)
+}
+
+// connectParams holds parsed parameters for STREAM CONNECT.
+type connectParams struct {
+	sess     session.Session
+	dest     string
+	silent   bool
+	fromPort int
+	toPort   int
+}
+
+// parseConnectParams parses and validates STREAM CONNECT parameters.
+func (h *StreamHandler) parseConnectParams(ctx *Context, cmd *protocol.Command) (*connectParams, *protocol.Response) {
 	id := cmd.Get("ID")
 	if id == "" {
-		return streamInvalidID("missing ID"), nil
+		return nil, streamInvalidID("missing ID")
 	}
 
 	dest := cmd.Get("DESTINATION")
 	if dest == "" {
-		return streamInvalidKey("missing DESTINATION"), nil
+		return nil, streamInvalidKey("missing DESTINATION")
 	}
 
-	// Lookup session
 	sess := h.lookupSession(ctx, id)
 	if sess == nil {
-		return streamInvalidID("session not found"), nil
+		return nil, streamInvalidID("session not found")
 	}
 
-	// Validate session is STREAM style
 	if sess.Style() != session.StyleStream {
-		return streamError("session is not STREAM style"), nil
+		return nil, streamError("session is not STREAM style")
 	}
 
-	// Parse optional parameters - parse SILENT early so we can handle failures correctly
-	silent := parseBool(cmd.Get("SILENT"), false)
-
-	// Parse and validate ports (SAM 3.2+)
 	fromPort, err := protocol.ValidatePortString(cmd.Get("FROM_PORT"))
 	if err != nil {
-		// Port validation errors still get responses even in silent mode
-		// as they occur before the actual connection attempt
-		return streamError(fmt.Sprintf("invalid FROM_PORT: %v", err)), nil
-	}
-	toPort, err := protocol.ValidatePortString(cmd.Get("TO_PORT"))
-	if err != nil {
-		return streamError(fmt.Sprintf("invalid TO_PORT: %v", err)), nil
+		return nil, streamError(fmt.Sprintf("invalid FROM_PORT: %v", err))
 	}
 
-	// Attempt connection
+	toPort, err := protocol.ValidatePortString(cmd.Get("TO_PORT"))
+	if err != nil {
+		return nil, streamError(fmt.Sprintf("invalid TO_PORT: %v", err))
+	}
+
+	return &connectParams{
+		sess:     sess,
+		dest:     dest,
+		silent:   parseBool(cmd.Get("SILENT"), false),
+		fromPort: fromPort,
+		toPort:   toPort,
+	}, nil
+}
+
+// executeConnect performs the actual connection.
+func (h *StreamHandler) executeConnect(params *connectParams) (*protocol.Response, error) {
 	if h.Connector == nil {
 		return streamError("connector not available"), nil
 	}
 
-	conn, err := h.Connector.Connect(sess, dest, fromPort, toPort)
+	conn, err := h.Connector.Connect(params.sess, params.dest, params.fromPort, params.toPort)
 	if err != nil {
-		// Per SAM spec: If SILENT=true and connection fails, close socket without response
-		if silent {
+		if params.silent {
 			return nil, util.NewSilentCloseError("connect", err)
 		}
 		return h.connectError(err), nil
 	}
 
-	// If silent, no response - just return nil and let caller handle data pipe
-	if silent {
-		// Store connection for data forwarding
-		_ = conn // Connection will be used by bridge for data forwarding
+	if params.silent {
+		_ = conn
 		return nil, nil
 	}
 
-	// Return OK response - after this, socket becomes data pipe
-	// The caller is responsible for setting up data forwarding
 	_ = conn
 	return streamOK(), nil
 }
@@ -173,67 +189,85 @@ func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*pro
 // allowed on the same session ID. Prior to 3.2, concurrent accepts would fail
 // with ALREADY_ACCEPTING."
 func (h *StreamHandler) handleAccept(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
-	// Parse required parameters
-	id := cmd.Get("ID")
-	if id == "" {
-		return streamInvalidID("missing ID"), nil
+	sess, resp := h.validateAcceptSession(ctx, cmd)
+	if resp != nil {
+		return resp, nil
 	}
 
-	// Lookup session
-	sess := h.lookupSession(ctx, id)
-	if sess == nil {
-		return streamInvalidID("session not found"), nil
-	}
-
-	// Validate session is STREAM style
-	if sess.Style() != session.StyleStream {
-		return streamError("session is not STREAM style"), nil
-	}
-
-	// Parse optional parameters - parse SILENT early for correct failure handling
 	silent := parseBool(cmd.Get("SILENT"), false)
 
-	// Check for concurrent accepts (version-dependent)
-	// Prior to SAM 3.2, only one concurrent ACCEPT is allowed per session.
-	// Use interface type assertion to StreamSession for proper interface compliance.
-	streamSess, isStreamSession := sess.(session.StreamSession)
-	if isStreamSession {
-		// Check if we're on a pre-3.2 version
-		if compareVersions(ctx.Version, "3.2") < 0 {
-			// Pre-3.2: reject if already accepting
-			if streamSess.PendingAcceptCount() > 0 {
-				return streamAlreadyAccepting(), nil
-			}
-		}
-		// Track this pending accept
-		streamSess.IncrementPendingAccepts()
-		defer streamSess.DecrementPendingAccepts()
+	cleanup, resp := h.trackPendingAccept(ctx, sess)
+	if resp != nil {
+		return resp, nil
+	}
+	if cleanup != nil {
+		defer cleanup()
 	}
 
-	// Attempt accept
+	return h.executeAccept(sess, silent)
+}
+
+// validateAcceptSession validates the session for ACCEPT operation.
+func (h *StreamHandler) validateAcceptSession(ctx *Context, cmd *protocol.Command) (session.Session, *protocol.Response) {
+	id := cmd.Get("ID")
+	if id == "" {
+		return nil, streamInvalidID("missing ID")
+	}
+
+	sess := h.lookupSession(ctx, id)
+	if sess == nil {
+		return nil, streamInvalidID("session not found")
+	}
+
+	if sess.Style() != session.StyleStream {
+		return nil, streamError("session is not STREAM style")
+	}
+
+	return sess, nil
+}
+
+// trackPendingAccept manages concurrent accept tracking per SAM version.
+// Returns a cleanup function and optional error response.
+func (h *StreamHandler) trackPendingAccept(ctx *Context, sess session.Session) (func(), *protocol.Response) {
+	streamSess, isStreamSession := sess.(session.StreamSession)
+	if !isStreamSession {
+		return nil, nil
+	}
+
+	if compareVersions(ctx.Version, "3.2") < 0 {
+		if streamSess.PendingAcceptCount() > 0 {
+			return nil, streamAlreadyAccepting()
+		}
+	}
+
+	streamSess.IncrementPendingAccepts()
+	return streamSess.DecrementPendingAccepts, nil
+}
+
+// executeAccept performs the actual accept operation.
+func (h *StreamHandler) executeAccept(sess session.Session, silent bool) (*protocol.Response, error) {
 	if h.Acceptor == nil {
 		return streamError("acceptor not available"), nil
 	}
 
 	conn, info, err := h.Acceptor.Accept(sess)
 	if err != nil {
-		// Per SAM spec: If SILENT=true and accept fails, close socket without response
 		if silent {
 			return nil, util.NewSilentCloseError("accept", err)
 		}
 		return streamError(err.Error()), nil
 	}
 
-	// If silent, no response - just return nil and let caller handle data pipe
 	if silent {
 		_ = conn
 		return nil, nil
 	}
 
-	// Return OK response with destination info on additional line.
-	// Per SAMv3.md: After STREAM STATUS RESULT=OK, the bridge sends:
-	// $destination FROM_PORT=nnn TO_PORT=nnn\n
-	// Then data forwarding begins.
+	return h.buildAcceptResponse(conn, info)
+}
+
+// buildAcceptResponse creates the accept success response.
+func (h *StreamHandler) buildAcceptResponse(conn net.Conn, info *AcceptInfo) (*protocol.Response, error) {
 	_ = conn
 	resp := streamOK()
 	if info != nil {
