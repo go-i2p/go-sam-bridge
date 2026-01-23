@@ -4,7 +4,10 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/go-i2p/go-i2p/lib/config"
+	"github.com/go-i2p/go-i2p/lib/embedded"
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 )
 
@@ -29,9 +32,10 @@ type Lifecycle interface {
 // Bridge is an embeddable SAM bridge server.
 // It implements the Lifecycle interface for easy integration.
 type Bridge struct {
-	config *Config
-	deps   *Dependencies
-	server *bridge.Server
+	config         *Config
+	deps           *Dependencies
+	server         *bridge.Server
+	embeddedRouter embedded.EmbeddedRouter
 
 	mu       sync.Mutex
 	running  atomic.Bool
@@ -83,11 +87,26 @@ func New(opts ...Option) (*Bridge, error) {
 		RegisterAuthHandlers(server.Router(), authStore, deps)
 	}
 
+	// check if something is already listening on I2CPAddr, if it is not, create an embedded router
+	var embeddedRouter embedded.EmbeddedRouter
+	if checkPortAvailable(bridgeConfig.I2CPAddr) == true {
+		routercfg := config.DefaultRouterConfig()
+		routercfg.I2CP.Address = bridgeConfig.I2CPAddr
+		embeddedRouter, err := embedded.NewStandardEmbeddedRouter(routercfg)
+		if err != nil {
+			return nil, err
+		}
+		if err := embeddedRouter.Configure(routercfg); err != nil {
+			return nil, err
+		}
+
+	}
 	return &Bridge{
-		config: cfg,
-		deps:   deps,
-		server: server,
-		done:   make(chan struct{}),
+		config:         cfg,
+		deps:           deps,
+		server:         server,
+		embeddedRouter: embeddedRouter,
+		done:           make(chan struct{}),
 	}, nil
 }
 
@@ -97,6 +116,16 @@ func New(opts ...Option) (*Bridge, error) {
 func (b *Bridge) Start(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if checkPortAvailable(b.config.I2CPAddr) == true {
+		if err := b.embeddedRouter.Start(); err != nil {
+			return err
+		}
+	}
+	for checkPortAvailable(b.config.I2CPAddr) == false {
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	b.deps.Logger.Info("Embedded router started")
 
 	if b.running.Load() {
 		return ErrBridgeAlreadyRunning
@@ -167,6 +196,12 @@ func (b *Bridge) Stop(ctx context.Context) error {
 	}
 
 	b.deps.Logger.Info("SAM bridge stopped")
+
+	if err := b.embeddedRouter.Stop(); err != nil {
+		b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+	}
+
+	b.deps.Logger.Info("Embedded router stopped")
 
 	return nil
 }
