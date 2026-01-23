@@ -89,17 +89,17 @@ func New(opts ...Option) (*Bridge, error) {
 
 	// check if something is already listening on I2CPAddr, if it is not, create an embedded router
 	var embeddedRouter embedded.EmbeddedRouter
-	if checkPortAvailable(bridgeConfig.I2CPAddr) == true {
+	if checkPortAvailable(bridgeConfig.I2CPAddr) {
 		routercfg := config.DefaultRouterConfig()
 		routercfg.I2CP.Address = bridgeConfig.I2CPAddr
-		embeddedRouter, err := embedded.NewStandardEmbeddedRouter(routercfg)
-		if err != nil {
-			return nil, err
+		var routerErr error
+		embeddedRouter, routerErr = embedded.NewStandardEmbeddedRouter(routercfg)
+		if routerErr != nil {
+			return nil, routerErr
 		}
-		if err := embeddedRouter.Configure(routercfg); err != nil {
-			return nil, err
+		if routerErr = embeddedRouter.Configure(routercfg); routerErr != nil {
+			return nil, routerErr
 		}
-
 	}
 	return &Bridge{
 		config:         cfg,
@@ -116,16 +116,18 @@ func New(opts ...Option) (*Bridge, error) {
 func (b *Bridge) Start(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if checkPortAvailable(b.config.I2CPAddr) == true {
+
+	// Only start embedded router if we created one (port was available during New())
+	if b.embeddedRouter != nil {
 		if err := b.embeddedRouter.Start(); err != nil {
 			return err
 		}
+		// Wait for embedded router to start listening
+		for checkPortAvailable(b.config.I2CPAddr) {
+			time.Sleep(500 * time.Millisecond)
+		}
+		b.deps.Logger.Info("Embedded router started")
 	}
-	for checkPortAvailable(b.config.I2CPAddr) == false {
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	b.deps.Logger.Info("Embedded router started")
 
 	if b.running.Load() {
 		return ErrBridgeAlreadyRunning
@@ -197,11 +199,13 @@ func (b *Bridge) Stop(ctx context.Context) error {
 
 	b.deps.Logger.Info("SAM bridge stopped")
 
-	if err := b.embeddedRouter.Stop(); err != nil {
-		b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+	// Stop embedded router if we started one
+	if b.embeddedRouter != nil {
+		if err := b.embeddedRouter.Stop(); err != nil {
+			b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+		}
+		b.deps.Logger.Info("Embedded router stopped")
 	}
-
-	b.deps.Logger.Info("Embedded router stopped")
 
 	return nil
 }
