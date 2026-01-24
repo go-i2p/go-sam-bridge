@@ -181,9 +181,12 @@ func (c *Client) CreateSession(ctx context.Context, samSessionID string, config 
 		return nil, fmt.Errorf("failed to create I2CP session: %w", err)
 	}
 
-	// Get the destination
+	// Get the destination and mark active (protected by mutex since callbacks
+	// can be triggered from go-i2cp's ProcessIO goroutine concurrently)
+	sess.mu.Lock()
 	sess.destination = i2cpSession.Destination()
 	sess.active = true
+	sess.mu.Unlock()
 
 	// Register the session
 	c.RegisterSession(samSessionID, sess)
@@ -233,9 +236,9 @@ func (sess *I2CPSession) applyConfig(config *SessionConfig) {
 // Safe to call multiple times.
 func (sess *I2CPSession) Close() error {
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 
 	if !sess.active {
+		sess.mu.Unlock()
 		return nil
 	}
 
@@ -246,16 +249,23 @@ func (sess *I2CPSession) Close() error {
 		sess.client.UnregisterSession(sess.samSessionID)
 	}
 
-	// Close the I2CP session
-	if sess.session != nil {
-		if err := sess.session.Close(); err != nil {
+	// Capture session and callbacks before releasing lock
+	// We must release the lock before calling session.Close() because
+	// go-i2cp's Close() invokes status callbacks which try to acquire our lock.
+	session := sess.session
+	callbacks := sess.callbacks
+	sess.mu.Unlock()
+
+	// Close the I2CP session (outside of lock to prevent deadlock)
+	if session != nil {
+		if err := session.Close(); err != nil {
 			return fmt.Errorf("failed to close I2CP session: %w", err)
 		}
 	}
 
-	// Notify callback
-	if sess.callbacks != nil && sess.callbacks.OnDestroyed != nil {
-		sess.callbacks.OnDestroyed()
+	// Notify callback (outside of lock)
+	if callbacks != nil && callbacks.OnDestroyed != nil {
+		callbacks.OnDestroyed()
 	}
 
 	return nil
