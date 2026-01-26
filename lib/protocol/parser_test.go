@@ -305,8 +305,23 @@ func TestParser_Parse_Errors(t *testing.T) {
 			wantError: ErrEmptyCommand,
 		},
 		{
-			name:      "unterminated quote",
+			name:      "unterminated quote at end",
 			input:     `SESSION CREATE ID="unclosed`,
+			wantError: ErrUnterminatedQuote,
+		},
+		{
+			name:      "stray quote at end of unquoted value",
+			input:     `SESSION CREATE ID=value"`,
+			wantError: ErrUnterminatedQuote,
+		},
+		{
+			name:      "stray quote in middle of value",
+			input:     `SESSION CREATE ID=val"ue`,
+			wantError: ErrUnterminatedQuote,
+		},
+		{
+			name:      "unbalanced quotes multiple",
+			input:     `SESSION CREATE ID="test" NAME="unclosed`,
 			wantError: ErrUnterminatedQuote,
 		},
 	}
