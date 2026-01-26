@@ -2,6 +2,7 @@ package embedding
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-i2p/go-i2p/lib/config"
 	"github.com/go-i2p/go-i2p/lib/embedded"
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
+	"github.com/go-i2p/go-sam-bridge/lib/datagram"
 )
 
 // Lifecycle defines the interface for controlling a Bridge.
@@ -36,6 +38,7 @@ type Bridge struct {
 	deps           *Dependencies
 	server         *bridge.Server
 	embeddedRouter embedded.EmbeddedRouter
+	udpListener    *datagram.UDPListener
 
 	mu       sync.Mutex
 	running  atomic.Bool
@@ -68,11 +71,19 @@ func New(opts ...Option) (*Bridge, error) {
 		return nil, err
 	}
 
+	// Create UDP listener for datagram port 7655 if configured
+	var udpListener *datagram.UDPListener
+	if cfg.DatagramPort > 0 {
+		udpAddr := fmt.Sprintf(":%d", cfg.DatagramPort)
+		udpListener = datagram.NewUDPListener(udpAddr, deps.Registry)
+	}
+
 	return &Bridge{
 		config:         cfg,
 		deps:           deps,
 		server:         server,
 		embeddedRouter: embeddedRouter,
+		udpListener:    udpListener,
 		done:           make(chan struct{}),
 	}, nil
 }
@@ -160,6 +171,16 @@ func (b *Bridge) Start(ctx context.Context) error {
 		return ErrBridgeAlreadyRunning
 	}
 
+	// Start UDP listener for datagram port 7655 per SAMv3.md
+	if b.udpListener != nil {
+		if err := b.udpListener.Start(); err != nil {
+			b.deps.Logger.WithError(err).Warn("Failed to start UDP datagram listener")
+			// Non-fatal: continue without UDP support
+		} else {
+			b.deps.Logger.WithField("addr", b.udpListener.Addr()).Info("UDP datagram listener started")
+		}
+	}
+
 	// Create a cancellable context for shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	b.cancelFn = cancel
@@ -222,6 +243,15 @@ func (b *Bridge) Stop(ctx context.Context) error {
 	// Close all sessions
 	if err := b.deps.Registry.Close(); err != nil {
 		b.deps.Logger.WithError(err).Warn("Error closing sessions")
+	}
+
+	// Close UDP listener
+	if b.udpListener != nil {
+		if err := b.udpListener.Close(); err != nil {
+			b.deps.Logger.WithError(err).Warn("Error closing UDP listener")
+		} else {
+			b.deps.Logger.Info("UDP datagram listener stopped")
+		}
 	}
 
 	b.deps.Logger.Info("SAM bridge stopped")
