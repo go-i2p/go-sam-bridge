@@ -86,23 +86,42 @@ func TestDestination_Hash(t *testing.T) {
 		}
 	})
 
-	t.Run("short public key", func(t *testing.T) {
+	t.Run("short public key returns hex encoded", func(t *testing.T) {
 		d := &Destination{PublicKey: []byte("shortkey")}
 		got := d.Hash()
-		if got != "shortkey" {
-			t.Errorf("short PublicKey.Hash() = %q, want %q", got, "shortkey")
+		// "shortkey" hex encoded = 73686f72746b6579
+		want := "73686f72746b6579"
+		if got != want {
+			t.Errorf("short PublicKey.Hash() = %q, want %q", got, want)
 		}
 	})
 
-	t.Run("long public key truncated to 32 bytes", func(t *testing.T) {
+	t.Run("long public key truncated to 32 bytes hex encoded", func(t *testing.T) {
 		longKey := make([]byte, 64)
 		for i := range longKey {
 			longKey[i] = byte(i)
 		}
 		d := &Destination{PublicKey: longKey}
 		got := d.Hash()
-		if len(got) != 32 {
-			t.Errorf("long PublicKey.Hash() len = %d, want 32", len(got))
+		// 32 bytes hex encoded = 64 characters
+		if len(got) != 64 {
+			t.Errorf("long PublicKey.Hash() len = %d, want 64", len(got))
+		}
+		// Verify it contains only hex characters
+		for _, c := range got {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				t.Errorf("Hash contains non-hex character: %c", c)
+			}
+		}
+	})
+
+	t.Run("binary data produces valid hex", func(t *testing.T) {
+		// Test with bytes that are not valid UTF-8 to verify hex encoding works
+		d := &Destination{PublicKey: []byte{0x00, 0xff, 0x80, 0x7f}}
+		got := d.Hash()
+		want := "00ff807f"
+		if got != want {
+			t.Errorf("binary PublicKey.Hash() = %q, want %q", got, want)
 		}
 	})
 }

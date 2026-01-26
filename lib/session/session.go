@@ -6,6 +6,7 @@ package session
 
 import (
 	"context"
+	"encoding/hex"
 	"net"
 )
 
@@ -108,11 +109,19 @@ func (s Style) IsPrimary() bool {
 }
 
 // Destination represents an I2P destination with public and private keys.
-// This is a placeholder that will be fully implemented in lib/destination.
+// This struct is used throughout the SAM bridge to represent session destinations.
+//
+// IMPORTANT: The PublicKey and PrivateKey fields store Base64-encoded I2P destination
+// strings, not raw cryptographic key bytes. This matches SAM protocol conventions where
+// destinations are exchanged as Base64 strings. To get the destination as a string for
+// SAM responses, use string(dest.PublicKey).
 type Destination struct {
-	// PublicKey is the I2P destination (public portion).
+	// PublicKey stores the Base64-encoded I2P destination (public portion).
+	// This is the format used in SAM protocol responses (e.g., NAMING REPLY VALUE=...).
+	// Use string(dest.PublicKey) to get the Base64 destination string.
 	PublicKey []byte
-	// PrivateKey is the full private key for signing.
+	// PrivateKey stores the Base64-encoded full private key for signing.
+	// This is the format returned in SESSION STATUS DESTINATION=... responses.
 	PrivateKey []byte
 	// SignatureType is the signature algorithm (e.g., 7 for Ed25519).
 	SignatureType int
@@ -143,18 +152,21 @@ func (d *Destination) HasOfflineSignature() bool {
 	return d != nil && d.OfflineSignature != nil
 }
 
-// Hash returns a unique identifier for the destination (typically a hash of the public key).
+// Hash returns a unique identifier for the destination as a hex-encoded string.
+// Uses the first 32 bytes of the public key encoded as hexadecimal.
+// This provides a consistent, valid string identifier for destination uniqueness checking.
+// Returns empty string for nil or empty destinations.
 func (d *Destination) Hash() string {
 	if d == nil || len(d.PublicKey) == 0 {
 		return ""
 	}
-	// For now, use a simple hex representation of first 32 bytes
-	// This will be replaced with proper I2P hash calculation
+	// Use hex encoding for reliable string output that's safe for any byte sequence.
+	// Take first 32 bytes (or less if shorter) for a reasonably unique identifier.
 	hashLen := len(d.PublicKey)
 	if hashLen > 32 {
 		hashLen = 32
 	}
-	return string(d.PublicKey[:hashLen])
+	return hex.EncodeToString(d.PublicKey[:hashLen])
 }
 
 // Session defines the base interface for all SAM session types.

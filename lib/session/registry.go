@@ -190,17 +190,27 @@ func (r *RegistryImpl) Count() int {
 }
 
 // Close terminates all sessions and clears the registry.
+// Sessions are collected first and the lock is released before closing them
+// to prevent deadlocks if session close callbacks attempt to unregister.
 // Errors from individual session closes are ignored.
 func (r *RegistryImpl) Close() error {
+	// Collect sessions while holding the lock
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
+	sessions := make([]Session, 0, len(r.sessions))
 	for _, s := range r.sessions {
-		_ = s.Close()
+		sessions = append(sessions, s)
 	}
+	// Clear registry state while still holding the lock
 	r.sessions = make(map[string]Session)
 	r.dests = make(map[string]string)
 	r.mostRecentByStyle = make(map[Style]string)
+	r.mu.Unlock()
+
+	// Close sessions without holding the lock to prevent deadlocks
+	// from session close callbacks that may call Unregister
+	for _, s := range sessions {
+		_ = s.Close()
+	}
 	return nil
 }
 

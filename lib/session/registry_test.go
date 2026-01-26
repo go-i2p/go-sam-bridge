@@ -259,23 +259,83 @@ func TestRegistry_Count(t *testing.T) {
 }
 
 func TestRegistry_Close(t *testing.T) {
-	r := NewRegistry()
-	conn := &mockConn{}
-	s := &testSession{
-		BaseSession: NewBaseSession("session1", StyleStream, nil, conn, nil),
-	}
-	_ = r.Register(s)
+	t.Run("basic close", func(t *testing.T) {
+		r := NewRegistry()
+		conn := &mockConn{}
+		s := &testSession{
+			BaseSession: NewBaseSession("session1", StyleStream, nil, conn, nil),
+		}
+		_ = r.Register(s)
 
-	err := r.Close()
-	if err != nil {
-		t.Errorf("Close() = %v, want nil", err)
-	}
-	if r.Count() != 0 {
-		t.Errorf("Count() after Close() = %d, want 0", r.Count())
-	}
-	if !conn.isClosed() {
-		t.Error("Session connection should be closed")
-	}
+		err := r.Close()
+		if err != nil {
+			t.Errorf("Close() = %v, want nil", err)
+		}
+		if r.Count() != 0 {
+			t.Errorf("Count() after Close() = %d, want 0", r.Count())
+		}
+		if !conn.isClosed() {
+			t.Error("Session connection should be closed")
+		}
+	})
+
+	t.Run("close multiple sessions", func(t *testing.T) {
+		r := NewRegistry()
+		conns := make([]*mockConn, 5)
+		for i := 0; i < 5; i++ {
+			conns[i] = &mockConn{}
+			s := &testSession{
+				BaseSession: NewBaseSession("session"+string(rune('0'+i)), StyleStream, nil, conns[i], nil),
+			}
+			_ = r.Register(s)
+		}
+
+		err := r.Close()
+		if err != nil {
+			t.Errorf("Close() = %v, want nil", err)
+		}
+		if r.Count() != 0 {
+			t.Errorf("Count() after Close() = %d, want 0", r.Count())
+		}
+		for i, conn := range conns {
+			if !conn.isClosed() {
+				t.Errorf("Session %d connection should be closed", i)
+			}
+		}
+	})
+
+	t.Run("close is safe after registry cleared", func(t *testing.T) {
+		// This test verifies that sessions can safely call Unregister
+		// during Close() without deadlock, since we release the lock first.
+		r := NewRegistry()
+		s := newTestSession("session1", nil)
+		_ = r.Register(s)
+
+		// Close clears the registry first, so subsequent Unregister calls
+		// should find nothing and return harmlessly
+		err := r.Close()
+		if err != nil {
+			t.Errorf("Close() = %v, want nil", err)
+		}
+
+		// This should not panic or deadlock
+		err = r.Unregister("session1")
+		if err != nil {
+			// Session was already removed during Close, so this is expected
+			// to return ErrSessionNotFound
+			if err != util.ErrSessionNotFound {
+				t.Errorf("Unregister after Close() = %v, want nil or ErrSessionNotFound", err)
+			}
+		}
+	})
+
+	t.Run("close empty registry", func(t *testing.T) {
+		r := NewRegistry()
+		err := r.Close()
+		if err != nil {
+			t.Errorf("Close() empty registry = %v, want nil", err)
+		}
+	})
 }
 
 func TestRegistry_Has(t *testing.T) {

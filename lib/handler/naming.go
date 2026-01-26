@@ -154,8 +154,9 @@ func (h *NamingHandler) handleNameMe(ctx *Context, name string, optionsRequested
 		return namingInvalidKey(name, "session has no destination"), nil
 	}
 
-	// Return the public key as base64
-	// Note: For NAME=ME, we don't query leaseset options as this is our own session
+	// Return the destination as Base64 string.
+	// dest.PublicKey stores Base64-encoded destination bytes per session.Destination docs.
+	// Converting to string gives us the Base64 destination for the SAM response.
 	return namingOK(name, string(dest.PublicKey)), nil
 }
 
