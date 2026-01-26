@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
@@ -47,6 +48,16 @@ func (m *mockAuthManager) RemoveUser(username string) error {
 func (m *mockAuthManager) HasUser(username string) bool {
 	_, exists := m.users[username]
 	return exists
+}
+
+// ListUsers returns a sorted slice of all registered usernames.
+func (m *mockAuthManager) ListUsers() []string {
+	users := make([]string, 0, len(m.users))
+	for username := range m.users {
+		users = append(users, username)
+	}
+	sort.Strings(users)
+	return users
 }
 
 func TestAuthHandler_Enable(t *testing.T) {
@@ -353,6 +364,7 @@ func TestRegisterAuthHandlers(t *testing.T) {
 		{"AUTH", "DISABLE"},
 		{"AUTH", "ADD"},
 		{"AUTH", "REMOVE"},
+		{"AUTH", "LIST"},
 		{"AUTH", ""}, // Catch-all
 	}
 
@@ -366,6 +378,110 @@ func TestRegisterAuthHandlers(t *testing.T) {
 		if h == nil {
 			t.Errorf("expected handler for AUTH %s, got nil", tt.action)
 		}
+	}
+}
+
+func TestAuthHandler_List(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupUsers  map[string]string
+		expectUsers string // Space-separated, sorted
+	}{
+		{
+			name:        "empty user list",
+			setupUsers:  map[string]string{},
+			expectUsers: "",
+		},
+		{
+			name:        "single user",
+			setupUsers:  map[string]string{"alice": "pass1"},
+			expectUsers: "alice",
+		},
+		{
+			name:        "multiple users sorted",
+			setupUsers:  map[string]string{"charlie": "pass3", "alice": "pass1", "bob": "pass2"},
+			expectUsers: "alice bob charlie",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := newMockAuthManager()
+			for user, pass := range tt.setupUsers {
+				manager.AddUser(user, pass)
+			}
+			handler := NewAuthHandler(manager)
+			ctx := NewContext(nil, nil)
+
+			cmd := &protocol.Command{
+				Verb:    protocol.VerbAuth,
+				Action:  protocol.ActionList,
+				Options: make(map[string]string),
+			}
+
+			resp, err := handler.Handle(ctx, cmd)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			respStr := resp.String()
+
+			// Check for OK result
+			if !containsAll(respStr, "AUTH", "REPLY", "RESULT=OK") {
+				t.Errorf("expected OK response, got: %s", respStr)
+			}
+
+			// Check for USERS field with expected value
+			// Note: Values with spaces are quoted, single values are not
+			if tt.expectUsers == "" {
+				// Empty string should be USERS=
+				if !containsAll(respStr, "USERS=") {
+					t.Errorf("expected USERS= in response, got: %s", respStr)
+				}
+			} else if len(tt.setupUsers) == 1 {
+				// Single user without spaces - no quotes
+				expectedUsersField := "USERS=" + tt.expectUsers
+				if !containsAll(respStr, expectedUsersField) {
+					t.Errorf("expected %s in response, got: %s", expectedUsersField, respStr)
+				}
+			} else {
+				// Multiple users with spaces - quoted
+				expectedUsersField := "USERS=\"" + tt.expectUsers + "\""
+				if !containsAll(respStr, expectedUsersField) {
+					t.Errorf("expected %s in response, got: %s", expectedUsersField, respStr)
+				}
+			}
+		})
+	}
+}
+
+func TestAuthHandler_List_NoPasswordsExposed(t *testing.T) {
+	manager := newMockAuthManager()
+	manager.AddUser("testuser", "secretpassword")
+	handler := NewAuthHandler(manager)
+	ctx := NewContext(nil, nil)
+
+	cmd := &protocol.Command{
+		Verb:    protocol.VerbAuth,
+		Action:  protocol.ActionList,
+		Options: make(map[string]string),
+	}
+
+	resp, err := handler.Handle(ctx, cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	respStr := resp.String()
+
+	// Verify password is not in response
+	if containsAll(respStr, "secretpassword") {
+		t.Errorf("password should not be exposed in AUTH LIST response: %s", respStr)
+	}
+
+	// Verify username IS in response
+	if !containsAll(respStr, "testuser") {
+		t.Errorf("username should be in AUTH LIST response: %s", respStr)
 	}
 }
 

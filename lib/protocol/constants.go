@@ -28,6 +28,7 @@ const (
 	ActionCreate   = "CREATE"
 	ActionAdd      = "ADD"
 	ActionRemove   = "REMOVE"
+	ActionList     = "LIST"
 	ActionConnect  = "CONNECT"
 	ActionAccept   = "ACCEPT"
 	ActionForward  = "FORWARD"

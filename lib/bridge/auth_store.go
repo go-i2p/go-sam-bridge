@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -99,6 +100,24 @@ func (s *AuthStore) HasUser(username string) bool {
 	defer s.mu.RUnlock()
 	_, exists := s.users[username]
 	return exists
+}
+
+// ListUsers returns a sorted slice of all registered usernames.
+// Implements handler.AuthManager interface.
+// Per Java I2P reference implementation, this supports AUTH LIST command.
+// Passwords are never exposed through this method.
+func (s *AuthStore) ListUsers() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make([]string, 0, len(s.users))
+	for username := range s.users {
+		users = append(users, username)
+	}
+
+	// Sort for consistent output and easier testing
+	sort.Strings(users)
+	return users
 }
 
 // CheckPassword verifies the password for a user.

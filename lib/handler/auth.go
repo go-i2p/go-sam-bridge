@@ -28,6 +28,10 @@ type AuthManager interface {
 
 	// HasUser returns true if the username exists.
 	HasUser(username string) bool
+
+	// ListUsers returns a sorted slice of all registered usernames.
+	// Per Java I2P reference implementation, this supports AUTH LIST command.
+	ListUsers() []string
 }
 
 // AuthHandler handles AUTH commands per SAM 3.2.
@@ -61,6 +65,8 @@ func (h *AuthHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Res
 		return h.handleAdd(ctx, cmd)
 	case protocol.ActionRemove:
 		return h.handleRemove(ctx, cmd)
+	case protocol.ActionList:
+		return h.handleList(ctx, cmd)
 	default:
 		return authError("unknown AUTH action: " + cmd.Action), nil
 	}
@@ -118,6 +124,32 @@ func (h *AuthHandler) handleRemove(ctx *Context, cmd *protocol.Command) (*protoc
 	return authOK(), nil
 }
 
+// handleList processes AUTH LIST command.
+// Returns a list of configured usernames.
+//
+// Format: AUTH LIST
+// Response: AUTH REPLY RESULT=OK USERS="user1 user2 user3"
+//
+// Per Java I2P reference implementation, this allows administrators
+// to view configured users. Passwords are never returned.
+func (h *AuthHandler) handleList(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	users := h.manager.ListUsers()
+
+	// Build space-separated user list
+	userList := ""
+	for i, user := range users {
+		if i > 0 {
+			userList += " "
+		}
+		userList += user
+	}
+
+	return protocol.NewResponse(protocol.VerbAuth).
+		WithAction(protocol.ActionReply).
+		WithResult(protocol.ResultOK).
+		WithOption("USERS", userList), nil
+}
+
 // authOK builds a successful AUTH response.
 func authOK() *protocol.Response {
 	return protocol.NewResponse(protocol.VerbAuth).
@@ -135,13 +167,14 @@ func authError(message string) *protocol.Response {
 }
 
 // RegisterAuthHandlers registers the AUTH handler with a router.
-// All AUTH actions (ENABLE, DISABLE, ADD, REMOVE) use the same handler.
+// All AUTH actions (ENABLE, DISABLE, ADD, REMOVE, LIST) use the same handler.
 func RegisterAuthHandlers(router *Router, manager AuthManager) {
 	handler := NewAuthHandler(manager)
 	router.Register("AUTH ENABLE", handler)
 	router.Register("AUTH DISABLE", handler)
 	router.Register("AUTH ADD", handler)
 	router.Register("AUTH REMOVE", handler)
+	router.Register("AUTH LIST", handler)
 	// Also register a catch-all for unknown AUTH actions
 	router.Register("AUTH", handler)
 }

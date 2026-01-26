@@ -382,3 +382,132 @@ func TestAuthStore_ConcurrentReadWrite(t *testing.T) {
 	close(done)
 	wg.Wait()
 }
+
+func TestAuthStore_ListUsers(t *testing.T) {
+	tests := []struct {
+		name     string
+		users    map[string]string
+		expected []string
+	}{
+		{
+			name:     "empty store",
+			users:    map[string]string{},
+			expected: []string{},
+		},
+		{
+			name:     "single user",
+			users:    map[string]string{"alice": "pass1"},
+			expected: []string{"alice"},
+		},
+		{
+			name:     "multiple users sorted",
+			users:    map[string]string{"charlie": "pass3", "alice": "pass1", "bob": "pass2"},
+			expected: []string{"alice", "bob", "charlie"},
+		},
+		{
+			name:     "users with special chars",
+			users:    map[string]string{"user_1": "pass", "user-2": "pass", "user.3": "pass"},
+			expected: []string{"user-2", "user.3", "user_1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewAuthStore()
+			for user, pass := range tt.users {
+				store.AddUser(user, pass)
+			}
+
+			users := store.ListUsers()
+
+			if len(users) != len(tt.expected) {
+				t.Fatalf("expected %d users, got %d", len(tt.expected), len(users))
+			}
+
+			for i, expected := range tt.expected {
+				if users[i] != expected {
+					t.Errorf("expected user[%d]=%q, got %q", i, expected, users[i])
+				}
+			}
+		})
+	}
+}
+
+func TestAuthStore_ListUsers_NoPasswordsExposed(t *testing.T) {
+	store := NewAuthStore()
+	store.AddUser("testuser", "secretpassword")
+
+	users := store.ListUsers()
+
+	// Verify only usernames are returned
+	for _, user := range users {
+		if user == "secretpassword" {
+			t.Error("password should not be in ListUsers result")
+		}
+	}
+}
+
+func TestAuthStore_ListUsers_IndependentSlice(t *testing.T) {
+	store := NewAuthStore()
+	store.AddUser("alice", "pass1")
+	store.AddUser("bob", "pass2")
+
+	users := store.ListUsers()
+
+	// Modify the returned slice
+	users[0] = "modified"
+
+	// Get users again - should be unchanged
+	usersAgain := store.ListUsers()
+	if usersAgain[0] == "modified" {
+		t.Error("modifying returned slice should not affect store")
+	}
+}
+
+func TestAuthStore_ListUsers_Concurrent(t *testing.T) {
+	store := NewAuthStore()
+	store.AddUser("user1", "pass1")
+	store.AddUser("user2", "pass2")
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// Start readers calling ListUsers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					users := store.ListUsers()
+					_ = len(users)
+				}
+			}
+		}()
+	}
+
+	// Start writers
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				select {
+				case <-done:
+					return
+				default:
+					store.AddUser("tempuser", "pass")
+					store.RemoveUser("tempuser")
+				}
+			}
+		}(i)
+	}
+
+	// Let it run briefly
+	close(done)
+	wg.Wait()
+	// If no race conditions, test passes
+}
