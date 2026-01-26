@@ -93,7 +93,7 @@ outbound.quantity=3
 
 ## Contributing
 
-Contributions are welcome! 
+Contributions are welcome!
 
 Areas where help is needed:
 
