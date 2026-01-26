@@ -132,7 +132,7 @@ func (h *SessionHandler) handleCreate(ctx *Context, cmd *protocol.Command) (*pro
 		return resp, nil
 	}
 
-	return sessionOK(privKeyBase64, id), nil
+	return sessionOK(privKeyBase64), nil
 }
 
 // validateCreatePreconditions checks handshake and session state.
@@ -767,17 +767,13 @@ func isI2CPOption(key string) bool {
 }
 
 // sessionOK returns a successful SESSION STATUS response.
-// Per SAMv3.md, includes both DESTINATION and ID in the response
-// so server can properly bind the session to the connection.
-func sessionOK(destination, sessionID string) *protocol.Response {
-	resp := protocol.NewResponse(protocol.VerbSession).
+// Per SAMv3.md line 343: SESSION STATUS RESULT=OK DESTINATION=$privkey
+// The response includes only DESTINATION, not ID.
+func sessionOK(destination string) *protocol.Response {
+	return protocol.NewResponse(protocol.VerbSession).
 		WithAction(protocol.ActionStatus).
 		WithResult(protocol.ResultOK).
 		WithDestination(destination)
-	if sessionID != "" {
-		resp = resp.WithOption("ID", sessionID)
-	}
-	return resp
 }
 
 // sessionDuplicatedID returns a DUPLICATED_ID response.
@@ -884,7 +880,7 @@ func (h *SessionHandler) executeAddSubsession(
 	dest := ctx.Session.Destination()
 	destBase64 := string(dest.PublicKey)
 
-	return sessionOK(destBase64, id), nil
+	return sessionOK(destBase64), nil
 }
 
 // handleRemove processes a SESSION REMOVE command.
@@ -931,7 +927,7 @@ func (h *SessionHandler) handleRemove(ctx *Context, cmd *protocol.Command) (*pro
 	dest := ctx.Session.Destination()
 	destBase64 := string(dest.PublicKey)
 
-	return sessionOK(destBase64, id), nil
+	return sessionOK(destBase64), nil
 }
 
 // parseSubsessionOptions parses subsession options from SESSION ADD command.

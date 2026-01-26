@@ -1114,7 +1114,7 @@ func TestIsI2CPOption(t *testing.T) {
 
 func TestSessionResponses(t *testing.T) {
 	t.Run("sessionOK", func(t *testing.T) {
-		resp := sessionOK("test-dest", "test-id")
+		resp := sessionOK("test-dest")
 		got := resp.String()
 		if !strings.Contains(got, "SESSION STATUS") {
 			t.Errorf("sessionOK() = %q, want 'SESSION STATUS'", got)
@@ -1125,16 +1125,9 @@ func TestSessionResponses(t *testing.T) {
 		if !strings.Contains(got, "DESTINATION=test-dest") {
 			t.Errorf("sessionOK() = %q, want 'DESTINATION=test-dest'", got)
 		}
-		if !strings.Contains(got, "ID=test-id") {
-			t.Errorf("sessionOK() = %q, want 'ID=test-id'", got)
-		}
-	})
-
-	t.Run("sessionOK without ID", func(t *testing.T) {
-		resp := sessionOK("test-dest", "")
-		got := resp.String()
+		// Per SAMv3.md line 343, response should NOT include ID field
 		if strings.Contains(got, "ID=") {
-			t.Errorf("sessionOK() with empty ID = %q, should not contain 'ID='", got)
+			t.Errorf("sessionOK() = %q, should not contain 'ID=' per SAM spec", got)
 		}
 	})
 
