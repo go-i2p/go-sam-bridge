@@ -323,3 +323,28 @@ func TestParseBool(t *testing.T) {
 		}
 	}
 }
+
+func TestRequireNonEmpty(t *testing.T) {
+	tests := []struct {
+		value     string
+		fieldName string
+		wantErr   bool
+	}{
+		{"value", "FIELD", false},
+		{"  ", "FIELD", false}, // whitespace is not empty
+		{"0", "FIELD", false},
+		{"", "FIELD", true},
+	}
+
+	for _, tt := range tests {
+		err := RequireNonEmpty(tt.value, tt.fieldName)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("RequireNonEmpty(%q, %q) error = %v, wantErr %v", tt.value, tt.fieldName, err, tt.wantErr)
+		}
+		if tt.wantErr && err != nil {
+			if !errors.Is(err, ErrEmptyValue) {
+				t.Errorf("RequireNonEmpty(%q, %q) error should wrap ErrEmptyValue", tt.value, tt.fieldName)
+			}
+		}
+	}
+}

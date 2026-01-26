@@ -26,6 +26,7 @@ import (
 //   - Delivered to client as 44-byte base64 hash
 //   - Client must do NAMING LOOKUP to get full destination for reply
 //   - No replay protection (unauthenticated)
+//   - Supports offline signatures (like DATAGRAM2, unlike DATAGRAM)
 //
 // Security Note: Application designers should use extreme caution and consider
 // the security implications of unauthenticated datagrams. DATAGRAM3 is suitable
@@ -58,6 +59,10 @@ type Datagram3SessionImpl struct {
 	// datagramConn is the go-datagrams connection for sending datagrams.
 	// This wraps an I2CP session and handles protocol-specific envelope formatting.
 	datagramConn *datagrams.DatagramConn
+
+	// offlineSignature stores the offline signature data if provided.
+	// Per SAMv3.md, DATAGRAM3 supports offline signatures (unlike DATAGRAM).
+	offlineSignature []byte
 
 	// Context for cancellation
 	ctx    context.Context
@@ -94,7 +99,9 @@ const Datagram3Base32HashSize = 52
 //
 // Unlike DATAGRAM2, DATAGRAM3 does not support:
 //   - Replay protection (unauthenticated)
-//   - Offline signatures
+//
+// Like DATAGRAM2, DATAGRAM3 supports:
+//   - Offline signatures (unlike legacy DATAGRAM)
 func NewDatagram3Session(
 	id string,
 	dest *Destination,
@@ -225,6 +232,29 @@ func (d *Datagram3SessionImpl) IsForwarding() bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.forwardAddr != nil
+}
+
+// SetOfflineSignature sets the offline signature data for this session.
+// Offline signatures allow transient keys while keeping long-term identity keys offline.
+//
+// Per SAMv3.md, DATAGRAM3 supports offline signatures (DATAGRAM does not).
+func (d *Datagram3SessionImpl) SetOfflineSignature(sig []byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.offlineSignature = make([]byte, len(sig))
+	copy(d.offlineSignature, sig)
+}
+
+// OfflineSignature returns the offline signature data, or nil if not set.
+func (d *Datagram3SessionImpl) OfflineSignature() []byte {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if d.offlineSignature == nil {
+		return nil
+	}
+	sig := make([]byte, len(d.offlineSignature))
+	copy(sig, d.offlineSignature)
+	return sig
 }
 
 // DeliverDatagram handles an incoming datagram and delivers it to the

@@ -594,3 +594,60 @@ func TestIsDisallowedProtocol(t *testing.T) {
 		})
 	}
 }
+
+func TestOfflineSignature_Bytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		sig      *OfflineSignature
+		expected []byte
+	}{
+		{
+			name:     "nil signature",
+			sig:      nil,
+			expected: nil,
+		},
+		{
+			name: "basic signature",
+			sig: &OfflineSignature{
+				Expires:            0x12345678,
+				TransientType:      7, // Ed25519
+				TransientPublicKey: []byte{0x01, 0x02, 0x03},
+				Signature:          []byte{0x04, 0x05, 0x06},
+			},
+			expected: []byte{
+				0x12, 0x34, 0x56, 0x78, // Expires (big-endian)
+				0x00, 0x07, // TransientType (big-endian)
+				0x01, 0x02, 0x03, // TransientPublicKey
+				0x04, 0x05, 0x06, // Signature
+			},
+		},
+		{
+			name: "empty keys",
+			sig: &OfflineSignature{
+				Expires:            1000,
+				TransientType:      0,
+				TransientPublicKey: []byte{},
+				Signature:          []byte{},
+			},
+			expected: []byte{
+				0x00, 0x00, 0x03, 0xE8, // 1000 in big-endian
+				0x00, 0x00, // TransientType 0
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sig.Bytes()
+			if len(got) != len(tt.expected) {
+				t.Errorf("Bytes() length = %d, want %d", len(got), len(tt.expected))
+				return
+			}
+			for i := range tt.expected {
+				if got[i] != tt.expected[i] {
+					t.Errorf("Bytes()[%d] = 0x%02x, want 0x%02x", i, got[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}

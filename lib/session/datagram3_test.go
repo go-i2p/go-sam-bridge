@@ -628,3 +628,57 @@ func TestDatagram3Session_ErrorMessages(t *testing.T) {
 		t.Error("ErrInvalidHashFormat should mention base64")
 	}
 }
+
+func TestDatagram3Session_OfflineSignature(t *testing.T) {
+	sess := NewDatagram3Session("test-dg3-offline", nil, nil, nil)
+	defer sess.Close()
+
+	// Initially nil
+	if sig := sess.OfflineSignature(); sig != nil {
+		t.Errorf("OfflineSignature() initially = %v, want nil", sig)
+	}
+
+	// Set offline signature
+	testSig := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	sess.SetOfflineSignature(testSig)
+
+	// Get and verify
+	got := sess.OfflineSignature()
+	if got == nil {
+		t.Fatal("OfflineSignature() returned nil after set")
+	}
+	if len(got) != len(testSig) {
+		t.Errorf("OfflineSignature() len = %d, want %d", len(got), len(testSig))
+	}
+	for i := range testSig {
+		if got[i] != testSig[i] {
+			t.Errorf("OfflineSignature()[%d] = %d, want %d", i, got[i], testSig[i])
+		}
+	}
+
+	// Verify returned slice is a copy (defensive copy)
+	got[0] = 0xFF
+	check := sess.OfflineSignature()
+	if check[0] != testSig[0] {
+		t.Error("OfflineSignature() should return a defensive copy")
+	}
+}
+
+func TestDatagram3Session_OfflineSignature_Nil(t *testing.T) {
+	sess := NewDatagram3Session("test-dg3-offline-nil", nil, nil, nil)
+	defer sess.Close()
+
+	// Set then clear by setting empty
+	testSig := []byte{0x01, 0x02}
+	sess.SetOfflineSignature(testSig)
+
+	emptySig := []byte{}
+	sess.SetOfflineSignature(emptySig)
+
+	got := sess.OfflineSignature()
+	if got == nil {
+		t.Log("Empty signature returned as nil (acceptable)")
+	} else if len(got) != 0 {
+		t.Errorf("OfflineSignature() = %v, want empty", got)
+	}
+}

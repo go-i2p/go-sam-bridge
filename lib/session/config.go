@@ -119,6 +119,33 @@ type OfflineSignature struct {
 	Signature []byte
 }
 
+// Bytes returns the serialized offline signature for transmission.
+// Format: expires (4 bytes) + sig type (2 bytes) + transient pub key + signature
+func (o *OfflineSignature) Bytes() []byte {
+	if o == nil {
+		return nil
+	}
+	result := make([]byte, 0, 6+len(o.TransientPublicKey)+len(o.Signature))
+
+	// Expires as 4-byte big-endian Unix timestamp
+	result = append(result,
+		byte(o.Expires>>24),
+		byte(o.Expires>>16),
+		byte(o.Expires>>8),
+		byte(o.Expires),
+	)
+
+	// Signature type as 2-byte big-endian
+	result = append(result,
+		byte(o.TransientType>>8),
+		byte(o.TransientType),
+	)
+
+	result = append(result, o.TransientPublicKey...)
+	result = append(result, o.Signature...)
+	return result
+}
+
 // DefaultSessionConfig returns a SessionConfig with recommended defaults.
 // Uses Ed25519 signatures, ECIES encryption, and 3 tunnels for compatibility.
 func DefaultSessionConfig() *SessionConfig {

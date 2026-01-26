@@ -558,6 +558,12 @@ func (h *SessionHandler) createDatagram2Session(
 		}
 	}
 
+	// Set offline signature if present in config
+	// Per SAMv3.md, DATAGRAM2 supports offline signatures (DATAGRAM does not)
+	if config.OfflineSignature != nil {
+		dg2Session.SetOfflineSignature(config.OfflineSignature.Bytes())
+	}
+
 	// Activate the session
 	dg2Session.SetStatus(session.StatusActive)
 
@@ -572,6 +578,7 @@ func (h *SessionHandler) createDatagram2Session(
 //   - Source is a 32-byte hash (44-byte base64)
 //   - Client must do NAMING LOOKUP to get full destination for reply
 //   - No replay protection (unauthenticated)
+//   - Offline signature support (like DATAGRAM2, unlike legacy DATAGRAM)
 //
 // Security Note: Application designers should use extreme caution with DATAGRAM3
 // and consider the security implications of unauthenticated datagrams.
@@ -600,6 +607,12 @@ func (h *SessionHandler) createDatagram3Session(
 		if err := dg3Session.SetForwarding(host, port); err != nil {
 			return nil, fmt.Errorf("failed to set forwarding: %w", err)
 		}
+	}
+
+	// Set offline signature if present in config
+	// Per SAMv3.md, DATAGRAM3 supports offline signatures (DATAGRAM does not)
+	if config.OfflineSignature != nil {
+		dg3Session.SetOfflineSignature(config.OfflineSignature.Bytes())
 	}
 
 	// Activate the session

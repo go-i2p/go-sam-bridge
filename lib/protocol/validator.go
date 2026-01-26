@@ -8,6 +8,25 @@ import (
 	"unicode"
 )
 
+// Empty Value Policy per SAM 3.2:
+//
+// The SAM specification allows empty option values in three forms:
+//   - KEY (no equals sign)
+//   - KEY= (equals with no value)
+//   - KEY="" (equals with empty quoted string)
+//
+// This implementation treats all three forms as equivalent empty strings.
+// For optional parameters, empty strings use documented defaults.
+// For required parameters, empty strings return appropriate errors.
+//
+// Consistency rules:
+//   - Port values: empty → 0 (default port)
+//   - Protocol values: empty → 18 (default RAW protocol)
+//   - Signature types: empty → 7 (Ed25519, security default)
+//   - Boolean values: empty → specified default
+//   - Session IDs: empty → error (required field)
+//   - Destinations: empty → error (required field)
+
 // Validation errors
 var (
 	ErrPortOutOfRange       = errors.New("port out of range (0-65535)")
@@ -16,7 +35,18 @@ var (
 	ErrInvalidSessionID     = errors.New("session ID contains invalid characters")
 	ErrEmptySessionID       = errors.New("session ID cannot be empty")
 	ErrInvalidSignatureType = errors.New("invalid signature type")
+	ErrEmptyValue           = errors.New("value cannot be empty")
 )
+
+// RequireNonEmpty validates that a value is not empty.
+// Returns ErrEmptyValue if the value is empty string.
+// Use this for required parameters that don't have defaults.
+func RequireNonEmpty(value, fieldName string) error {
+	if value == "" {
+		return fmt.Errorf("%s: %w", fieldName, ErrEmptyValue)
+	}
+	return nil
+}
 
 // ValidatePort validates an I2CP port number.
 // Valid range is 0-65535 per SAMv3.md.
