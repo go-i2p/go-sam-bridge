@@ -207,6 +207,13 @@ func (h *NamingHandler) resolveName(name string) (string, error) {
 
 // resolveB32 resolves a .b32.i2p address.
 // Uses the configured DestinationResolver for network lookup via I2CP.
+//
+// Per SAMv3.md: "NAMING LOOKUP does not require that a session has been created first.
+// However, in some implementations, a .b32.i2p lookup which is uncached and requires
+// a network query may fail, as no client tunnels are available."
+//
+// Limitation: In go-sam-bridge, network lookups require an active I2CP session.
+// Cached/local lookups are not currently supported without a session.
 // Returns KEY_NOT_FOUND if no resolver is configured.
 func (h *NamingHandler) resolveB32(name string) (string, error) {
 	if h.resolver == nil {
@@ -229,6 +236,12 @@ func (h *NamingHandler) resolveB32(name string) (string, error) {
 
 // resolveHostname resolves an .i2p hostname.
 // Uses the configured DestinationResolver for network lookup via I2CP.
+//
+// Per SAMv3.md: "NAMING LOOKUP does not require that a session has been created first."
+// However, network-based lookups require an active I2CP session with client tunnels.
+//
+// Limitation: Local address book lookup is not currently implemented.
+// All hostname lookups are performed via I2CP network queries.
 // Returns KEY_NOT_FOUND if no resolver is configured.
 func (h *NamingHandler) resolveHostname(name string) (string, error) {
 	if h.resolver == nil {

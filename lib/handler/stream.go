@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
@@ -430,17 +431,30 @@ func isValidPort(port int) bool {
 }
 
 // extractHost extracts the host from a host:port string.
+// Handles IPv4 ("192.168.1.1:8080"), IPv6 ("[::1]:8080"), and plain hosts.
+// Per SAMv3.md: "If not given, SAM takes the IP of the socket that issued the forward command"
 func extractHost(addr string) string {
 	if addr == "" {
 		return "127.0.0.1"
 	}
+
+	// Handle net.Addr.String() formats properly
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
+		// No port present, check if it's an IPv6 address in brackets
+		if strings.HasPrefix(addr, "[") && strings.HasSuffix(addr, "]") {
+			return addr[1 : len(addr)-1]
+		}
+		// Otherwise return as-is (plain hostname or IP)
 		return addr
 	}
+
 	if host == "" {
 		return "127.0.0.1"
 	}
+
+	// Handle IPv6 zone identifiers (e.g., "fe80::1%eth0")
+	// Keep the zone as it may be needed for link-local addresses
 	return host
 }
 

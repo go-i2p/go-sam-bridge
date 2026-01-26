@@ -67,6 +67,11 @@ func (h *RawHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Resp
 //   - FROM_PORT, TO_PORT, PROTOCOL override session defaults (SAM 3.2+)
 //   - Does not support DATAGRAM2/DATAGRAM3 formats
 func (h *RawHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	// Per SAMv3.md: "These commands do not support the ID parameter"
+	if cmd.Get("ID") != "" {
+		return rawError("RAW SEND does not support ID parameter"), nil
+	}
+
 	// Lookup RAW session
 	rawSess, resp := h.lookupRawSession(ctx)
 	if resp != nil {

@@ -241,7 +241,13 @@ func (h *SessionHandler) registerAndFinalizeSession(ctx *Context, newSession ses
 }
 
 // createTransientDest generates a new transient destination.
+// Per SAMv3.md: "Offline signatures may not be created with DESTINATION=TRANSIENT"
 func (h *SessionHandler) createTransientDest(cmd *protocol.Command) (*session.Destination, string, error) {
+	// Per SAMv3.md: reject offline signatures with TRANSIENT destination
+	if hasOfflineSignatureOptions(cmd) {
+		return nil, "", &sessionErr{msg: "offline signatures may not be created with DESTINATION=TRANSIENT"}
+	}
+
 	// Parse signature type (default is 0 per spec, but 7 is recommended)
 	sigType, err := parseSignatureType(cmd)
 	if err != nil {
@@ -764,6 +770,17 @@ func isI2CPOption(key string) bool {
 		strings.HasPrefix(key, "inbound.") ||
 		strings.HasPrefix(key, "outbound.") ||
 		strings.HasPrefix(key, "sam.")
+}
+
+// hasOfflineSignatureOptions checks if the command contains offline signature options.
+// Per SAMv3.md, offline signatures require specific options that cannot be used
+// with DESTINATION=TRANSIENT.
+func hasOfflineSignatureOptions(cmd *protocol.Command) bool {
+	// Check for offline signature related options
+	// The presence of these indicates an attempt to use offline signatures
+	return cmd.Get("OFFLINE_SIGNATURE") != "" ||
+		cmd.Get("OFFLINE_EXPIRES") != "" ||
+		cmd.Get("TRANSIENT_KEY") != ""
 }
 
 // sessionOK returns a successful SESSION STATUS response.

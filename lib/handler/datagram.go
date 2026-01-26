@@ -70,6 +70,11 @@ func (h *DatagramHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol
 //   - SAM 3.3 options: SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET
 //     (parsed but not yet fully implemented pending go-datagrams integration)
 func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	// Per SAMv3.md: "These commands do not support the ID parameter"
+	if cmd.Get("ID") != "" {
+		return datagramError("DATAGRAM SEND does not support ID parameter"), nil
+	}
+
 	// Lookup DATAGRAM session
 	dgSess, resp := h.lookupDatagramSession(ctx)
 	if resp != nil {

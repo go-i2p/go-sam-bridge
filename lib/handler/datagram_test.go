@@ -606,6 +606,45 @@ func TestDatagramHandler_HandleSend_SendError(t *testing.T) {
 	}
 }
 
+// TestDatagramHandler_HandleSend_RejectsIDParameter verifies that DATAGRAM SEND
+// explicitly rejects the ID parameter per SAMv3.md specification.
+func TestDatagramHandler_HandleSend_RejectsIDParameter(t *testing.T) {
+	handler := NewDatagramHandler()
+	mockSess := newMockDatagramSession("test-datagram")
+
+	cmd := &protocol.Command{
+		Verb:   protocol.VerbDatagram,
+		Action: protocol.ActionSend,
+		Options: map[string]string{
+			"DESTINATION": "test.i2p",
+			"SIZE":        "5",
+			"ID":          "some-session", // ID not allowed per SAM spec
+		},
+		Payload: []byte("hello"),
+	}
+
+	ctx := NewContext(&mockConn{}, newMockRegistry())
+	ctx.HandshakeComplete = true
+	ctx.BindSession(mockSess)
+
+	resp, err := handler.Handle(ctx, cmd)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("Handle() returned nil, want error response rejecting ID")
+	}
+
+	respStr := resp.String()
+	if !strings.Contains(respStr, "RESULT="+protocol.ResultI2PError) {
+		t.Errorf("Handle() = %q, want RESULT=%s", respStr, protocol.ResultI2PError)
+	}
+	if !strings.Contains(respStr, "does not support ID") {
+		t.Errorf("Handle() = %q, want message about ID not supported", respStr)
+	}
+}
+
 func TestParseDatagramPort(t *testing.T) {
 	tests := []struct {
 		input   string

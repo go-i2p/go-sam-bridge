@@ -656,6 +656,58 @@ func TestSessionHandler_Handle(t *testing.T) {
 			handshakeDone: true,
 			wantResult:    protocol.ResultI2PError,
 		},
+		// ISSUE-004: TRANSIENT with offline signature options must be rejected
+		{
+			name: "TRANSIENT rejects OFFLINE_SIGNATURE option",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":             "STREAM",
+					"ID":                "transient-offline",
+					"DESTINATION":       "TRANSIENT",
+					"OFFLINE_SIGNATURE": "some-data",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultInvalidKey,
+		},
+		{
+			name: "TRANSIENT rejects OFFLINE_EXPIRES option",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":           "STREAM",
+					"ID":              "transient-expires",
+					"DESTINATION":     "TRANSIENT",
+					"OFFLINE_EXPIRES": "1234567890",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultInvalidKey,
+		},
+		{
+			name: "TRANSIENT rejects TRANSIENT_KEY option",
+			command: &protocol.Command{
+				Verb:   "SESSION",
+				Action: "CREATE",
+				Options: map[string]string{
+					"STYLE":         "STREAM",
+					"ID":            "transient-key",
+					"DESTINATION":   "TRANSIENT",
+					"TRANSIENT_KEY": "some-key-data",
+				},
+			},
+			manager:       successManager,
+			registry:      newMockRegistry(),
+			handshakeDone: true,
+			wantResult:    protocol.ResultInvalidKey,
+		},
 	}
 
 	for _, tt := range tests {

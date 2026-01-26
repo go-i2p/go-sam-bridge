@@ -647,6 +647,45 @@ func TestRawHandler_RejectPrimarySession(t *testing.T) {
 	}
 }
 
+// TestRawHandler_HandleSend_RejectsIDParameter verifies that RAW SEND
+// explicitly rejects the ID parameter per SAMv3.md specification.
+func TestRawHandler_HandleSend_RejectsIDParameter(t *testing.T) {
+	handler := NewRawHandler()
+	mockSess := newMockRawSession("test-raw")
+
+	cmd := &protocol.Command{
+		Verb:   protocol.VerbRaw,
+		Action: protocol.ActionSend,
+		Options: map[string]string{
+			"DESTINATION": "test.i2p",
+			"SIZE":        "5",
+			"ID":          "some-session", // ID not allowed per SAM spec
+		},
+		Payload: []byte("hello"),
+	}
+
+	ctx := NewContext(&mockConn{}, newMockRegistry())
+	ctx.HandshakeComplete = true
+	ctx.BindSession(mockSess)
+
+	resp, err := handler.Handle(ctx, cmd)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("Handle() returned nil, want error response rejecting ID")
+	}
+
+	respStr := resp.String()
+	if !strings.Contains(respStr, "RESULT="+protocol.ResultI2PError) {
+		t.Errorf("Handle() = %q, want RESULT=%s", respStr, protocol.ResultI2PError)
+	}
+	if !strings.Contains(respStr, "does not support ID") {
+		t.Errorf("Handle() = %q, want message about ID not supported", respStr)
+	}
+}
+
 func TestRawHandler_HandleSend_WithSAM33Options(t *testing.T) {
 	handler := NewRawHandler()
 	mockSess := newMockRawSession("test-raw")

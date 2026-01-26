@@ -101,19 +101,67 @@ func parseSignatureType(cmd *protocol.Command) (int, error) {
 
 // parseSignatureTypeName converts a signature type name to its numeric value.
 // Names are case-insensitive per SAM specification.
+// Covers all I2P signature types per Java I2P SigType enum.
 func parseSignatureTypeName(name string) (int, bool) {
 	// Map of signature type names to values
+	// Includes all known aliases from Java I2P and i2pd
 	names := map[string]int{
-		"DSA_SHA1":             protocol.SigTypeDSA_SHA1,
-		"ECDSA_SHA256_P256":    protocol.SigTypeECDSA_SHA256_P256,
-		"ECDSA_SHA384_P384":    protocol.SigTypeECDSA_SHA384_P384,
-		"ECDSA_SHA512_P521":    protocol.SigTypeECDSA_SHA512_P521,
-		"RSA_SHA256_2048":      protocol.SigTypeRSA_SHA256_2048,
-		"RSA_SHA384_3072":      protocol.SigTypeRSA_SHA384_3072,
-		"RSA_SHA512_4096":      protocol.SigTypeRSA_SHA512_4096,
+		// Type 0: DSA-SHA1 (legacy, 1024-bit)
+		"DSA_SHA1":    protocol.SigTypeDSA_SHA1,
+		"DSA-SHA1":    protocol.SigTypeDSA_SHA1,
+		"DSA":         protocol.SigTypeDSA_SHA1,
+		"SHA1WITHDSA": protocol.SigTypeDSA_SHA1,
+
+		// Type 1: ECDSA-SHA256-P256
+		"ECDSA_SHA256_P256": protocol.SigTypeECDSA_SHA256_P256,
+		"ECDSA-SHA256-P256": protocol.SigTypeECDSA_SHA256_P256,
+		"ECDSA_SHA256":      protocol.SigTypeECDSA_SHA256_P256,
+		"P256":              protocol.SigTypeECDSA_SHA256_P256,
+		"SHA256WITHECDSA":   protocol.SigTypeECDSA_SHA256_P256,
+
+		// Type 2: ECDSA-SHA384-P384
+		"ECDSA_SHA384_P384": protocol.SigTypeECDSA_SHA384_P384,
+		"ECDSA-SHA384-P384": protocol.SigTypeECDSA_SHA384_P384,
+		"ECDSA_SHA384":      protocol.SigTypeECDSA_SHA384_P384,
+		"P384":              protocol.SigTypeECDSA_SHA384_P384,
+		"SHA384WITHECDSA":   protocol.SigTypeECDSA_SHA384_P384,
+
+		// Type 3: ECDSA-SHA512-P521
+		"ECDSA_SHA512_P521": protocol.SigTypeECDSA_SHA512_P521,
+		"ECDSA-SHA512-P521": protocol.SigTypeECDSA_SHA512_P521,
+		"ECDSA_SHA512":      protocol.SigTypeECDSA_SHA512_P521,
+		"P521":              protocol.SigTypeECDSA_SHA512_P521,
+		"SHA512WITHECDSA":   protocol.SigTypeECDSA_SHA512_P521,
+
+		// Type 4: RSA-SHA256-2048
+		"RSA_SHA256_2048": protocol.SigTypeRSA_SHA256_2048,
+		"RSA-SHA256-2048": protocol.SigTypeRSA_SHA256_2048,
+		"RSA2048":         protocol.SigTypeRSA_SHA256_2048,
+		"SHA256WITHRSA":   protocol.SigTypeRSA_SHA256_2048,
+
+		// Type 5: RSA-SHA384-3072
+		"RSA_SHA384_3072": protocol.SigTypeRSA_SHA384_3072,
+		"RSA-SHA384-3072": protocol.SigTypeRSA_SHA384_3072,
+		"RSA3072":         protocol.SigTypeRSA_SHA384_3072,
+		"SHA384WITHRSA":   protocol.SigTypeRSA_SHA384_3072,
+
+		// Type 6: RSA-SHA512-4096
+		"RSA_SHA512_4096": protocol.SigTypeRSA_SHA512_4096,
+		"RSA-SHA512-4096": protocol.SigTypeRSA_SHA512_4096,
+		"RSA4096":         protocol.SigTypeRSA_SHA512_4096,
+		"SHA512WITHRSA":   protocol.SigTypeRSA_SHA512_4096,
+
+		// Type 7: Ed25519 (recommended)
 		"ED25519":              protocol.SigTypeEd25519,
-		"EDDSA_SHA512_ED25519": protocol.SigTypeEd25519, // Alias
-		"ED25519PH":            protocol.SigTypeEd25519ph,
+		"EDDSA_SHA512_ED25519": protocol.SigTypeEd25519, // Java I2P alias
+		"EDDSA-SHA512-ED25519": protocol.SigTypeEd25519,
+		"EDDSA":                protocol.SigTypeEd25519,
+		"ED25519-SHA-512":      protocol.SigTypeEd25519,
+
+		// Type 8: Ed25519ph (prehashed)
+		"ED25519PH":              protocol.SigTypeEd25519ph,
+		"EDDSA_SHA512_ED25519PH": protocol.SigTypeEd25519ph,
+		"ED25519-SHA-512-PH":     protocol.SigTypeEd25519ph,
 	}
 
 	// Case-insensitive lookup
