@@ -6,10 +6,10 @@ toolchain go1.24.12
 
 require (
 	github.com/go-i2p/common v0.1.0
-	github.com/go-i2p/go-datagrams v0.1.1-rc2
+	github.com/go-i2p/go-datagrams v0.1.1-rc3
 	github.com/go-i2p/go-i2cp v0.1.1-rc2
-	github.com/go-i2p/go-i2p v0.1.1-rc1
-	github.com/go-i2p/go-streaming v0.1.1-rc2
+	github.com/go-i2p/go-i2p v0.1.1-rc3
+	github.com/go-i2p/go-streaming v0.1.1-rc3
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/sirupsen/logrus v1.9.4
 )
