@@ -5,11 +5,11 @@ go 1.24.5
 toolchain go1.24.12
 
 require (
-	github.com/go-i2p/common v0.1.0
-	github.com/go-i2p/go-datagrams v0.1.1-rc3
-	github.com/go-i2p/go-i2cp v0.1.1-rc2
-	github.com/go-i2p/go-i2p v0.1.1-rc3
-	github.com/go-i2p/go-streaming v0.1.1-rc3
+	github.com/go-i2p/common v0.1.1
+	github.com/go-i2p/go-datagrams v0.1.1
+	github.com/go-i2p/go-i2cp v0.1.1
+	github.com/go-i2p/go-i2p v0.1.1
+	github.com/go-i2p/go-streaming v0.1.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/sirupsen/logrus v1.9.4
 )
@@ -22,10 +22,10 @@ require (
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/eyedeekay/go-unzip v0.0.0-20240201194209-560d8225b50e // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-i2p/crypto v0.1.1-rc2 // indirect
+	github.com/go-i2p/crypto v0.1.1 // indirect
 	github.com/go-i2p/elgamal v0.0.2 // indirect
-	github.com/go-i2p/go-noise v0.1.0 // indirect
-	github.com/go-i2p/logger v0.1.0 // indirect
+	github.com/go-i2p/go-noise v0.1.1 // indirect
+	github.com/go-i2p/logger v0.1.1 // indirect
 	github.com/go-i2p/noise v0.0.0-20251212204422-ded862d8cdf9 // indirect
 	github.com/go-i2p/su3 v0.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
