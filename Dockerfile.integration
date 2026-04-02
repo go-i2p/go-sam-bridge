@@ -1,0 +1,45 @@
+# Dockerfile.integration
+#
+# Container-isolated integration test for go-sam-bridge.
+# Uses the embedded go-i2p router exclusively (no external I2P needed).
+#
+# Usage:
+#   docker build -f Dockerfile.integration -t sam-bridge-integration .
+#   docker run --rm sam-bridge-integration
+#
+# The container:
+#   1. Builds the integration test binary
+#   2. Starts the embedded go-i2p router
+#   3. Waits for I2CP bootstrap
+#   4. Exercises the SAM protocol over live I2P tunnels
+#   5. Reports results and exits
+
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /src
+
+# Cache module downloads
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build the integration test binary (not executed yet)
+RUN go test -tags integration -c -o /integration-test ./integration/
+
+# --- Runtime stage ---
+FROM debian:bookworm-slim
+
+# The embedded go-i2p router needs a writable home directory for its data
+RUN mkdir -p /root/.go-i2p/base /root/.go-i2p/config
+
+COPY --from=builder /integration-test /integration-test
+
+# Default timeout: 20 minutes (router bootstrapping can be slow on first run)
+ENV TEST_TIMEOUT=20m
+
+# Run the integration tests
+# -test.v for verbose output
+# -test.timeout for overall deadline
+ENTRYPOINT ["/integration-test", "-test.v", "-test.timeout", "20m"]
