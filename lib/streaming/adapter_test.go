@@ -287,6 +287,13 @@ func BenchmarkParseDestinationFromBase64(b *testing.B) {
 func createTestClient(t *testing.T) *go_i2cp.Client {
 	t.Helper()
 
+	// Skip if I2CP router is not available
+	probeConn, probeErr := net.DialTimeout("tcp", "127.0.0.1:7654", 2*time.Second)
+	if probeErr != nil {
+		t.Skip("I2CP router not available at 127.0.0.1:7654")
+	}
+	probeConn.Close()
+
 	client := go_i2cp.NewClient(&go_i2cp.ClientCallBacks{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

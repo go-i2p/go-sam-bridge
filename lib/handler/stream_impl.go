@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -358,8 +359,8 @@ func (f *StreamingForwarder) forwardLoop(ctx context.Context, state *forwardStat
 func (f *StreamingForwarder) handleForward(ctx context.Context, i2pConn net.Conn, state *forwardState) {
 	defer i2pConn.Close()
 
-	// Connect to local target
-	addr := fmt.Sprintf("%s:%d", state.targetHost, state.targetPort)
+	// Connect to local target (use JoinHostPort for IPv6 compatibility)
+	addr := net.JoinHostPort(state.targetHost, strconv.Itoa(state.targetPort))
 	var localConn net.Conn
 	var err error
 

@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"sync"
 
@@ -174,6 +175,12 @@ func (r *RawSessionImpl) Send(dest string, data []byte, opts RawSendOptions) err
 	// Use go-datagrams DatagramConn if configured
 	if datagramConn == nil {
 		return ErrRawSendNotImplemented
+	}
+
+	// Warn if SAM 3.3 options are specified but not yet wired to I2CP
+	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
+		log.Printf("WARN: SAM 3.3 send options (SEND_TAGS=%d, TAG_THRESHOLD=%d, EXPIRES=%d, SEND_LEASESET=%v) are not yet passed to I2CP",
+			opts.SendTags, opts.TagThreshold, opts.Expires, opts.SendLeaseset)
 	}
 
 	// Send via DatagramConn using SendTo

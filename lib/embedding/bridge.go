@@ -185,6 +185,10 @@ func (b *Bridge) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	b.cancelFn = cancel
 
+	// Disable the server's own UDP listener since the embedding layer
+	// already manages UDP on the datagram port (avoids double-bind).
+	b.server.Config().DatagramPort = 0
+
 	// Start the server in a goroutine
 	go func() {
 		var err error
