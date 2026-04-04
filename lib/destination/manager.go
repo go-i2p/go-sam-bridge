@@ -3,6 +3,7 @@ package destination
 
 import (
 	"errors"
+	"fmt"
 
 	commondest "github.com/go-i2p/common/destination"
 	"github.com/go-i2p/common/keys_and_cert"
@@ -121,7 +122,7 @@ func (m *ManagerImpl) Generate(signatureType int) (*commondest.Destination, []by
 
 	// Currently only Ed25519 is supported via go-i2p/keys
 	if signatureType != SigTypeEd25519 {
-		return nil, nil, ErrUnsupportedSignatureType
+		return nil, nil, fmt.Errorf("%w: only Ed25519 (type 7) is currently supported, got type %d", ErrUnsupportedSignatureType, signatureType)
 	}
 
 	// Use go-i2p/keys for proper key generation

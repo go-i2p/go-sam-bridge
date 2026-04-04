@@ -1,6 +1,7 @@
 package destination
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -52,7 +53,7 @@ func TestManagerImpl_Generate(t *testing.T) {
 		if err == nil {
 			t.Error("Generate(DSA) should return error for unsupported type")
 		}
-		if err != ErrUnsupportedSignatureType {
+		if !errors.Is(err, ErrUnsupportedSignatureType) {
 			t.Errorf("Generate(DSA) error = %v, want ErrUnsupportedSignatureType", err)
 		}
 	})
@@ -62,7 +63,7 @@ func TestManagerImpl_Generate(t *testing.T) {
 		if err == nil {
 			t.Error("Generate(999) should return error")
 		}
-		if err != ErrUnsupportedSignatureType {
+		if !errors.Is(err, ErrUnsupportedSignatureType) {
 			t.Errorf("Generate(999) error = %v, want ErrUnsupportedSignatureType", err)
 		}
 	})
