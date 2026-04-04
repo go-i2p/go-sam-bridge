@@ -224,8 +224,10 @@ func (c *Context) StartRawReceiver() {
 		return
 	}
 
-	// Note: Raw sessions may also use forwarding, but the interface doesn't
-	// expose ForwardingAddr() - TODO: Add when raw forwarding is complete
+	// Check if forwarding is enabled (in which case, don't write to control socket)
+	if rawSess.ForwardingAddr() != nil {
+		return
+	}
 
 	go c.receiveRawDatagrams(rawSess.Receive())
 }

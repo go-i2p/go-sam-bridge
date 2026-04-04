@@ -291,6 +291,9 @@ type RawSession interface {
 	// HeaderEnabled returns true if HEADER=true was specified.
 	// When true, forwarded datagrams include FROM_PORT/TO_PORT/PROTOCOL header.
 	HeaderEnabled() bool
+
+	// ForwardingAddr returns the UDP address for forwarding, if configured.
+	ForwardingAddr() net.Addr
 }
 
 // PrimarySession extends Session with PRIMARY/MASTER session operations.

@@ -189,6 +189,9 @@ func (b *Bridge) Start(ctx context.Context) error {
 	// already manages UDP on the datagram port (avoids double-bind).
 	b.server.Config().DatagramPort = 0
 
+	// Use a channel to detect early startup failure
+	startErrCh := make(chan error, 1)
+
 	// Start the server in a goroutine
 	go func() {
 		var err error
@@ -200,6 +203,12 @@ func (b *Bridge) Start(ctx context.Context) error {
 			err = b.server.ListenAndServe()
 		}
 
+		// Signal startup failure if it happens immediately
+		select {
+		case startErrCh <- err:
+		default:
+		}
+
 		// Store error and signal done
 		b.mu.Lock()
 		b.err = err
@@ -208,6 +217,16 @@ func (b *Bridge) Start(ctx context.Context) error {
 
 		close(b.done)
 	}()
+
+	// Brief wait to detect immediate startup failures (e.g., port already in use)
+	select {
+	case err := <-startErrCh:
+		if err != nil {
+			return fmt.Errorf("server failed to start: %w", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		// No immediate error — listener is accepting connections
+	}
 
 	b.running.Store(true)
 
