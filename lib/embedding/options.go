@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/sirupsen/logrus"
 )
@@ -56,6 +57,15 @@ func WithRegistry(r session.Registry) Option {
 func WithI2CPProvider(p session.I2CPSessionProvider) Option {
 	return func(c *Config) {
 		c.I2CPProvider = p
+	}
+}
+
+// WithDestinationResolver sets the resolver for NAMING LOOKUP commands.
+// The I2CP server provides hosts.txt resolution by default, so this
+// resolver typically wraps the I2CP client's LookupDestination call.
+func WithDestinationResolver(r handler.DestinationResolver) Option {
+	return func(c *Config) {
+		c.DestinationResolver = r
 	}
 }
 

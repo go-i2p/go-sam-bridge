@@ -71,6 +71,9 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 
 		// Register NAMING handler
 		namingHandler := handler.NewNamingHandler(deps.DestManager)
+		if deps.DestResolver != nil {
+			namingHandler.SetDestinationResolver(deps.DestResolver)
+		}
 		router.Register("NAMING LOOKUP", namingHandler)
 		log.Debug("Registered NAMING handler")
 

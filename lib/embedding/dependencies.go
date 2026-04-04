@@ -2,6 +2,7 @@ package embedding
 
 import (
 	"github.com/go-i2p/go-sam-bridge/lib/destination"
+	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/sirupsen/logrus"
 )
@@ -19,6 +20,10 @@ type Dependencies struct {
 	// DestManager handles I2P destination creation and management.
 	DestManager destination.Manager
 
+	// DestResolver resolves I2P hostnames and .b32.i2p addresses via I2CP.
+	// The I2CP server provides hosts.txt resolution by default.
+	DestResolver handler.DestinationResolver
+
 	// Logger is the structured logger for all components.
 	Logger *logrus.Logger
 }
@@ -30,6 +35,7 @@ func newDependencies(cfg *Config) *Dependencies {
 		Registry:     cfg.Registry,
 		I2CPProvider: cfg.I2CPProvider,
 		DestManager:  destination.NewManager(),
+		DestResolver: cfg.DestinationResolver,
 		Logger:       cfg.Logger,
 	}
 

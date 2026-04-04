@@ -65,6 +65,12 @@ type Config struct {
 	// If nil, the bridge creates one using I2CPAddr.
 	I2CPProvider session.I2CPSessionProvider
 
+	// DestinationResolver resolves I2P hostnames and .b32.i2p addresses.
+	// The I2CP server provides hosts.txt resolution by default, so this
+	// resolver typically delegates to the I2CP client.
+	// If nil, NAMING LOOKUP returns KEY_NOT_FOUND for hostnames.
+	DestinationResolver handler.DestinationResolver
+
 	// Logger is a custom logger instance.
 	// If nil, a default logger is created.
 	Logger *logrus.Logger
