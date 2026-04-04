@@ -46,6 +46,10 @@ func (m *mockRawSession) Receive() <-chan session.ReceivedRawDatagram {
 	return make(chan session.ReceivedRawDatagram)
 }
 
+func (m *mockRawSession) ForwardingAddr() net.Addr {
+	return nil
+}
+
 func TestRawHandler_Handle(t *testing.T) {
 	handler := NewRawHandler()
 
