@@ -40,8 +40,8 @@ github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e h1:RUdNl2UXCZAGYaEH
 github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e/go.mod h1:/tnXnzZXdjSLxU5lKMCKDDFKi9WUcsd7llNBSvyynJo=
 github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d h1:a7DHsr9SOEjybZVtH3e0kJpXy40mZb1V+dGm9tptOl8=
 github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d/go.mod h1:6bX00E8eUkSstzG2c8L4MIuL6pX5VCYjcWjBVOMXk0M=
-github.com/go-i2p/su3 v0.0.2-0.20260403222358-bf7ef28aa90e h1:+SsZLmtaOVnJoVD7kn7pBZsWeBNjqTDKL0OQHYH3Y9g=
-github.com/go-i2p/su3 v0.0.2-0.20260403222358-bf7ef28aa90e/go.mod h1:oi9TAthPi7U45Nruj2yxEIoxuU7gTqSsN1TMNWyNmhc=
+github.com/go-i2p/su3 v0.0.2-0.20260406203134-0ec837609b00 h1:urtvEj539pxzv2W9VO7sW3eIUUjxfG9khv/yEZMWp/Y=
+github.com/go-i2p/su3 v0.0.2-0.20260406203134-0ec837609b00/go.mod h1:dj6jpK6m/Fi2g3iyUOZKLiWzWbPoxufIbA/SV8iMprE=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
