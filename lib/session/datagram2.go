@@ -192,12 +192,9 @@ func (d *Datagram2SessionImpl) ForwardingAddr() net.Addr {
 //
 // Returns error if port is invalid.
 func (d *Datagram2SessionImpl) SetForwarding(host string, port int) error {
-	if port < 1 || port > 65535 {
-		return ErrInvalidForwardingPort
-	}
-
-	if host == "" {
-		host = "127.0.0.1"
+	host, port, addr, err := resolveForwardingAddr(host, port)
+	if err != nil {
+		return err
 	}
 
 	d.mu.Lock()
@@ -205,12 +202,6 @@ func (d *Datagram2SessionImpl) SetForwarding(host string, port int) error {
 
 	d.forwardHost = host
 	d.forwardPort = port
-
-	// Resolve address
-	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
-	if err != nil {
-		return err
-	}
 	d.forwardAddr = addr
 
 	return nil

@@ -18,4 +18,7 @@ var (
 
 	// ErrI2CPConnectFailed is returned when connection to I2P router fails.
 	ErrI2CPConnectFailed = errors.New("embedding: failed to connect to I2P router")
+
+	// ErrEmbeddedRouterTimeout is returned when the embedded router fails to become ready.
+	ErrEmbeddedRouterTimeout = errors.New("embedding: embedded router did not become ready within timeout")
 )

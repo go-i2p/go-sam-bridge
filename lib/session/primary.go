@@ -214,7 +214,9 @@ func (p *PrimarySessionImpl) registerSubsession(id string, sess Session, routing
 		p.defaultSubsession = id
 	}
 
-	// Activate subsession immediately (tunnels already built)
+	// Activate subsession immediately.
+	// Subsessions share the parent PRIMARY session's I2CP tunnels, which are
+	// already built and ready (verified by the StatusActive check in validateAddSubsession).
 	if activatable, ok := sess.(interface{ SetStatus(Status) }); ok {
 		activatable.SetStatus(StatusActive)
 	}

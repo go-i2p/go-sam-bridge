@@ -28,7 +28,7 @@ This bridge is built on pure Go I2P libraries:
 - **[go-streaming](https://github.com/go-i2p/go-streaming)** - Reliable ordered streams over I2P
 - **[go-datagrams](https://github.com/go-i2p/go-datagrams)** - Datagram support (repliable, raw, and new formats)
 
-Unlike other SAM implementations that require a separate I2P router, `go-sam-bridge` directly embeds I2P routing in Go. If no router is available on the host, an embedded I2P router will be used instead.
+Unlike other SAM implementations that require a separate I2P router, `go-sam-bridge` directly embeds I2P routing in Go. If no I2CP listener is detected on the configured address, an embedded I2P router will be started automatically.
 
 ## Status
 
@@ -44,10 +44,12 @@ Unlike other SAM implementations that require a separate I2P router, `go-sam-bri
 - RAW anonymous datagram support
 - PRIMARY sessions with multiplexed subsessions
 - DEST GENERATE with Ed25519/ECIES-X25519 key generation
-- NAMING LOOKUP with B32/B33 address resolution(No hostnames yet)
+- NAMING LOOKUP with B32/B33 address resolution and .i2p hostname lookup (requires I2CP connection)
 - PING/PONG keepalive
 - AUTH commands for authentication management
 - Utility commands (QUIT, STOP, EXIT, HELP)
+
+**Note:** SAM 3.3 send options (SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET) are parsed and forwarded to go-datagrams; full support depends on upstream library.
 
 ## Quick Start
 

@@ -10,6 +10,7 @@ import (
 
 // Re-export signature type constants from go-i2p/common for convenience.
 // All clients should use SigTypeEd25519 (7) for new destinations.
+// Names use underscores to mirror I2P specification naming conventions.
 const (
 	SigTypeDSA_SHA1          = signature.SIGNATURE_TYPE_DSA_SHA1
 	SigTypeECDSA_SHA256_P256 = signature.SIGNATURE_TYPE_ECDSA_SHA256_P256

@@ -378,7 +378,8 @@ func (f *StreamingForwarder) handleForward(ctx context.Context, i2pConn net.Conn
 	}
 	defer localConn.Close()
 
-	// Bidirectional copy
+	// Bidirectional copy with proper goroutine lifecycle.
+	// Both goroutines must complete to avoid leaks.
 	done := make(chan struct{}, 2)
 
 	go func() {
@@ -396,4 +397,12 @@ func (f *StreamingForwarder) handleForward(ctx context.Context, i2pConn net.Conn
 	case <-done:
 	case <-ctx.Done():
 	}
+
+	// Close both connections to unblock the remaining io.Copy goroutine.
+	// The deferred Close calls are idempotent, so double-close is safe.
+	localConn.Close()
+	i2pConn.Close()
+
+	// Wait for the second goroutine to finish
+	<-done
 }

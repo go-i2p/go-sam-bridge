@@ -45,6 +45,7 @@ type Bridge struct {
 	done     chan struct{}
 	err      error
 	cancelFn context.CancelFunc
+	stopOnce sync.Once
 }
 
 // Ensure Bridge implements Lifecycle.
@@ -160,8 +161,16 @@ func (b *Bridge) Start(ctx context.Context) error {
 		if err := b.embeddedRouter.Start(); err != nil {
 			return err
 		}
-		// Wait for embedded router to start listening
+		// Wait for embedded router to start listening with timeout
+		timeout := b.config.EmbeddedRouterTimeout
+		if timeout <= 0 {
+			timeout = DefaultEmbeddedRouterTimeout
+		}
+		deadline := time.Now().Add(timeout)
 		for checkPortAvailable(b.config.I2CPAddr) {
+			if time.Now().After(deadline) {
+				return ErrEmbeddedRouterTimeout
+			}
 			time.Sleep(500 * time.Millisecond)
 		}
 		b.deps.Logger.Info("Embedded router started")
@@ -222,6 +231,10 @@ func (b *Bridge) Start(ctx context.Context) error {
 	select {
 	case err := <-startErrCh:
 		if err != nil {
+			// Clean up UDP listener if it was started
+			if b.udpListener != nil {
+				b.udpListener.Close()
+			}
 			return fmt.Errorf("server failed to start: %w", err)
 		}
 	case <-time.After(100 * time.Millisecond):
@@ -243,49 +256,51 @@ func (b *Bridge) Start(ctx context.Context) error {
 
 // Stop gracefully shuts down the bridge.
 // The context can be used to set a timeout for shutdown operations.
+// Stop is safe to call concurrently; only the first call performs cleanup.
 func (b *Bridge) Stop(ctx context.Context) error {
-	b.mu.Lock()
 	if !b.running.Load() {
-		b.mu.Unlock()
 		return nil // Already stopped
 	}
-	b.mu.Unlock()
 
-	b.deps.Logger.Info("Stopping SAM bridge...")
+	b.stopOnce.Do(func() {
+		b.deps.Logger.Info("Stopping SAM bridge...")
 
-	// Cancel the start context
-	if b.cancelFn != nil {
-		b.cancelFn()
-	}
+		b.running.Store(false)
 
-	// Close the server
-	if err := b.server.Close(); err != nil {
-		b.deps.Logger.WithError(err).Warn("Error closing server")
-	}
-
-	// Close all sessions
-	if err := b.deps.Registry.Close(); err != nil {
-		b.deps.Logger.WithError(err).Warn("Error closing sessions")
-	}
-
-	// Close UDP listener
-	if b.udpListener != nil {
-		if err := b.udpListener.Close(); err != nil {
-			b.deps.Logger.WithError(err).Warn("Error closing UDP listener")
-		} else {
-			b.deps.Logger.Info("UDP datagram listener stopped")
+		// Cancel the start context
+		if b.cancelFn != nil {
+			b.cancelFn()
 		}
-	}
 
-	b.deps.Logger.Info("SAM bridge stopped")
-
-	// Stop embedded router if we started one
-	if b.embeddedRouter != nil {
-		if err := b.embeddedRouter.Stop(); err != nil {
-			b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+		// Close the server
+		if err := b.server.Close(); err != nil {
+			b.deps.Logger.WithError(err).Warn("Error closing server")
 		}
-		b.deps.Logger.Info("Embedded router stopped")
-	}
+
+		// Close all sessions
+		if err := b.deps.Registry.Close(); err != nil {
+			b.deps.Logger.WithError(err).Warn("Error closing sessions")
+		}
+
+		// Close UDP listener
+		if b.udpListener != nil {
+			if err := b.udpListener.Close(); err != nil {
+				b.deps.Logger.WithError(err).Warn("Error closing UDP listener")
+			} else {
+				b.deps.Logger.Info("UDP datagram listener stopped")
+			}
+		}
+
+		b.deps.Logger.Info("SAM bridge stopped")
+
+		// Stop embedded router if we started one
+		if b.embeddedRouter != nil {
+			if err := b.embeddedRouter.Stop(); err != nil {
+				b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+			}
+			b.deps.Logger.Info("Embedded router stopped")
+		}
+	})
 
 	return nil
 }

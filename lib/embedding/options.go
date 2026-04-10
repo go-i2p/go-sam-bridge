@@ -3,6 +3,7 @@ package embedding
 import (
 	"crypto/tls"
 	"net"
+	"time"
 
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
@@ -117,5 +118,13 @@ func WithHandlerRegistrar(fn HandlerRegistrarFunc) Option {
 func WithDebug(enabled bool) Option {
 	return func(c *Config) {
 		c.Debug = enabled
+	}
+}
+
+// WithEmbeddedRouterTimeout sets the maximum time to wait for the embedded router to become ready.
+// Default is 60 seconds.
+func WithEmbeddedRouterTimeout(timeout time.Duration) Option {
+	return func(c *Config) {
+		c.EmbeddedRouterTimeout = timeout
 	}
 }

@@ -106,10 +106,8 @@ func (a *LeasesetAdapter) LookupWithOptions(name string) (*handler.LeasesetLooku
 
 	return &handler.LeasesetLookupResult{
 		Destination: destBase64,
-		Options: []handler.LeasesetOption{
-			{Key: "i2cp.leasesetOptions", Value: "unavailable"},
-		},
-		Found: true,
+		Options:     nil,
+		Found:       true,
 	}, nil
 }
 

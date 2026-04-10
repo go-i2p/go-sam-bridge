@@ -5,6 +5,7 @@ package embedding
 import (
 	"crypto/tls"
 	"net"
+	"time"
 
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
@@ -22,6 +23,9 @@ const (
 
 	// DefaultDatagramPort is the standard SAM UDP port per SAMv3.md.
 	DefaultDatagramPort = 7655
+
+	// DefaultEmbeddedRouterTimeout is the maximum time to wait for the embedded router.
+	DefaultEmbeddedRouterTimeout = 60 * time.Second
 )
 
 // HandlerRegistrarFunc is a function that registers handlers with a router.
@@ -81,17 +85,22 @@ type Config struct {
 
 	// Debug enables debug logging.
 	Debug bool
+
+	// EmbeddedRouterTimeout is the maximum time to wait for the embedded router to become ready.
+	// Default is 60 seconds.
+	EmbeddedRouterTimeout time.Duration
 }
 
 // DefaultConfig returns a Config with sensible defaults.
 // All fields can be overridden via functional options.
 func DefaultConfig() *Config {
 	return &Config{
-		ListenAddr:   DefaultListenAddr,
-		I2CPAddr:     DefaultI2CPAddr,
-		DatagramPort: DefaultDatagramPort,
-		AuthUsers:    make(map[string]string),
-		Debug:        false,
+		ListenAddr:            DefaultListenAddr,
+		I2CPAddr:              DefaultI2CPAddr,
+		DatagramPort:          DefaultDatagramPort,
+		AuthUsers:             make(map[string]string),
+		Debug:                 false,
+		EmbeddedRouterTimeout: DefaultEmbeddedRouterTimeout,
 	}
 }
 

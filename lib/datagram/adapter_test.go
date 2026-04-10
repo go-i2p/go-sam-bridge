@@ -8,12 +8,25 @@ package datagram
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-i2p/go-datagrams"
 	go_i2cp "github.com/go-i2p/go-i2cp"
 )
+
+// testPort is an atomic counter for allocating unique ports per test.
+var testPort atomic.Uint32
+
+func init() {
+	testPort.Store(17700)
+}
+
+// nextTestPort returns a unique port for each test invocation.
+func nextTestPort() uint16 {
+	return uint16(testPort.Add(1))
+}
 
 // =============================================================================
 // Unit Tests - No I2P Router Required
@@ -130,6 +143,10 @@ func createTestClient(t *testing.T) *go_i2cp.Client {
 			"I2P router with I2CP enabled is REQUIRED. Error: %v", err)
 	}
 
+	t.Cleanup(func() {
+		client.Close()
+	})
+
 	return client
 }
 
@@ -169,6 +186,10 @@ func createTestSession(t *testing.T, client *go_i2cp.Client) *go_i2cp.Session {
 		t.Fatalf("Failed to create I2CP session: %v", err)
 	}
 
+	t.Cleanup(func() {
+		session.Close()
+	})
+
 	return session
 }
 
@@ -179,13 +200,10 @@ func TestIntegration_NewAdapter(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	// Create DatagramConn with Raw protocol (default)
-	conn, err := datagrams.NewDatagramConn(session, 7777)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("Failed to create DatagramConn: %v", err)
 	}
@@ -215,12 +233,10 @@ func TestIntegration_Adapter_Protocol_Raw(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConnWithProtocol(session, 7778, datagrams.ProtocolRaw)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConnWithProtocol(session, port, datagrams.ProtocolRaw)
 	if err != nil {
 		t.Fatalf("NewDatagramConnWithProtocol() error = %v", err)
 	}
@@ -243,12 +259,10 @@ func TestIntegration_Adapter_Protocol_Datagram3(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConnWithProtocol(session, 7788, datagrams.ProtocolDatagram3)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConnWithProtocol(session, port, datagrams.ProtocolDatagram3)
 	if err != nil {
 		t.Fatalf("NewDatagramConnWithProtocol() error = %v", err)
 	}
@@ -271,12 +285,10 @@ func TestIntegration_Adapter_Close(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7779)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -309,12 +321,10 @@ func TestIntegration_Adapter_MaxPayloadSize(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7780)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -344,12 +354,10 @@ func TestIntegration_Adapter_LocalAddr(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7781)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -360,13 +368,13 @@ func TestIntegration_Adapter_LocalAddr(t *testing.T) {
 		t.Fatalf("NewAdapter() error = %v", err)
 	}
 
-	// LocalAddr should contain port 7781
+	// LocalAddr should contain a port suffix
 	addr := adapter.LocalAddr()
 	if addr == "" {
 		t.Error("LocalAddr() returned empty string")
 	}
 
-	// Should contain :7781 suffix
+	// Should be a non-trivial address
 	if len(addr) < 5 {
 		t.Errorf("LocalAddr() = %q, expected longer address with port", addr)
 	}
@@ -379,12 +387,10 @@ func TestIntegration_Adapter_SendTo(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7782)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -405,7 +411,7 @@ func TestIntegration_Adapter_SendTo(t *testing.T) {
 
 	// Send a test datagram
 	payload := []byte("test datagram payload")
-	err = adapter.SendTo(payload, destB64, 7782)
+	err = adapter.SendTo(payload, destB64, port)
 	// Note: Even if delivery fails due to network timing, SendTo should not error
 	// immediately. The actual delivery is asynchronous in I2P.
 	if err != nil {
@@ -420,12 +426,10 @@ func TestIntegration_Adapter_SendTo_ClosedAdapter(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7783)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -443,7 +447,7 @@ func TestIntegration_Adapter_SendTo_ClosedAdapter(t *testing.T) {
 	destB64 := dest.Base64()
 
 	// Attempt to send on closed adapter should fail
-	err = adapter.SendTo([]byte("test"), destB64, 7783)
+	err = adapter.SendTo([]byte("test"), destB64, port)
 	if err == nil {
 		t.Error("SendTo() on closed adapter should return error")
 	}
@@ -456,13 +460,10 @@ func TestIntegration_Adapter_SendToWithOptions(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	// Use Datagram3 protocol which supports options
-	conn, err := datagrams.NewDatagramConnWithProtocol(session, 7784, datagrams.ProtocolDatagram3)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConnWithProtocol(session, port, datagrams.ProtocolDatagram3)
 	if err != nil {
 		t.Fatalf("NewDatagramConnWithProtocol() error = %v", err)
 	}
@@ -485,7 +486,7 @@ func TestIntegration_Adapter_SendToWithOptions(t *testing.T) {
 	}
 
 	payload := []byte("test with options")
-	err = adapter.SendToWithOptions(payload, destB64, 7784, opts)
+	err = adapter.SendToWithOptions(payload, destB64, port, opts)
 	if err != nil {
 		t.Errorf("SendToWithOptions() error = %v", err)
 	}
@@ -498,12 +499,10 @@ func TestIntegration_Adapter_SendToWithOptions_NilOptions(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7785)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
@@ -519,7 +518,7 @@ func TestIntegration_Adapter_SendToWithOptions_NilOptions(t *testing.T) {
 
 	// Send with nil options should work (falls back to basic SendTo)
 	payload := []byte("test without options")
-	err = adapter.SendToWithOptions(payload, destB64, 7785, nil)
+	err = adapter.SendToWithOptions(payload, destB64, port, nil)
 	if err != nil {
 		t.Errorf("SendToWithOptions(nil opts) error = %v", err)
 	}
@@ -532,12 +531,10 @@ func TestIntegration_NewAdapter_ClosedConn(t *testing.T) {
 	}
 
 	client := createTestClient(t)
-	defer client.Close()
-
 	session := createTestSession(t, client)
-	defer session.Close()
 
-	conn, err := datagrams.NewDatagramConn(session, 7786)
+	port := nextTestPort()
+	conn, err := datagrams.NewDatagramConn(session, port)
 	if err != nil {
 		t.Fatalf("NewDatagramConn() error = %v", err)
 	}
