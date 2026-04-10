@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	go_i2cp "github.com/go-i2p/go-i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 )
 
@@ -65,16 +64,11 @@ func (a *LeasesetAdapter) LookupWithOptions(name string) (*handler.LeasesetLooku
 		return nil, fmt.Errorf("session not available")
 	}
 
-	i2cpSession := a.session.Session()
-	if i2cpSession == nil {
-		return nil, fmt.Errorf("underlying I2CP session not available")
-	}
-
-	// Perform destination lookup using go-i2cp
+	// Perform destination lookup using go-i2cp (async with sync wrapper)
 	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
 	defer cancel()
 
-	dest, err := i2cpSession.LookupDestinationWithContext(ctx, name, a.timeout)
+	dest, err := a.session.LookupDestinationSync(ctx, name, a.timeout)
 	if err != nil {
 		// Determine if it's a not-found error or other error
 		// go-i2cp returns an error for not found, so we check the error message
@@ -137,12 +131,12 @@ func LeasesetAdapterFromClient(client *Client, sessionID string) (*LeasesetAdapt
 //   - .b32.i2p addresses (base32-encoded destination hashes)
 //   - .i2p hostnames (resolved via the I2P router's address book / network database)
 type DestinationResolverAdapter struct {
-	session *go_i2cp.Session
+	session *I2CPSession
 	timeout time.Duration
 }
 
 // NewDestinationResolverAdapter creates a DestinationResolver adapter for the given session.
-func NewDestinationResolverAdapter(session *go_i2cp.Session, timeout time.Duration) (*DestinationResolverAdapter, error) {
+func NewDestinationResolverAdapter(session *I2CPSession, timeout time.Duration) (*DestinationResolverAdapter, error) {
 	if session == nil {
 		return nil, fmt.Errorf("session cannot be nil")
 	}
@@ -165,7 +159,7 @@ func (a *DestinationResolverAdapter) Resolve(ctx context.Context, name string) (
 		return "", fmt.Errorf("session not available")
 	}
 
-	dest, err := a.session.LookupDestinationWithContext(ctx, name, a.timeout)
+	dest, err := a.session.LookupDestinationSync(ctx, name, a.timeout)
 	if err != nil {
 		return "", err
 	}
@@ -208,24 +202,13 @@ func (a *ClientDestinationResolverAdapter) Resolve(ctx context.Context, name str
 		return "", fmt.Errorf("client not available")
 	}
 
-	// Get the underlying go-i2cp client
-	i2cpClient := a.client.I2CPClient()
-	if i2cpClient == nil {
-		return "", fmt.Errorf("I2CP client not connected")
-	}
-
 	// Get the first available session for lookup
 	session := a.client.GetFirstSession()
 	if session == nil {
 		return "", fmt.Errorf("no active session available for lookup")
 	}
 
-	underlyingSession := session.Session()
-	if underlyingSession == nil {
-		return "", fmt.Errorf("underlying I2CP session not available")
-	}
-
-	dest, err := underlyingSession.LookupDestinationWithContext(ctx, name, a.timeout)
+	dest, err := session.LookupDestinationSync(ctx, name, a.timeout)
 	if err != nil {
 		return "", err
 	}

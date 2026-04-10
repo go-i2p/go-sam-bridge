@@ -49,6 +49,11 @@ type I2CPSession struct {
 
 	// tunnelReadyOnce ensures tunnelReady is only closed once.
 	tunnelReadyOnce sync.Once
+
+	// pendingLookups tracks pending async destination lookups by address.
+	// Each entry is a list of channels waiting for the result.
+	pendingLookups   map[string][]chan *go_i2cp.Destination
+	pendingLookupsMu sync.Mutex
 }
 
 // SessionConfig holds configuration for an I2CP session.
@@ -157,6 +162,7 @@ func (c *Client) CreateSession(ctx context.Context, samSessionID string, config 
 	callbacks := go_i2cp.SessionCallbacks{
 		OnMessage:       sess.onMessage,
 		OnStatus:        sess.onStatus,
+		OnDestination:   sess.onDestination,
 		OnMessageStatus: sess.onMessageStatus,
 	}
 
@@ -416,6 +422,79 @@ func (sess *I2CPSession) onMessageStatus(session *go_i2cp.Session, messageId uin
 
 	if callbacks != nil && callbacks.OnMessageStatus != nil {
 		callbacks.OnMessageStatus(nonce, int(status))
+	}
+}
+
+// onDestination handles asynchronous destination lookup results.
+// Matches go-i2cp SessionCallbacks.OnDestination signature.
+func (sess *I2CPSession) onDestination(session *go_i2cp.Session, requestId uint32, address string, dest *go_i2cp.Destination) {
+	sess.pendingLookupsMu.Lock()
+	chs, ok := sess.pendingLookups[address]
+	if ok {
+		delete(sess.pendingLookups, address)
+	}
+	sess.pendingLookupsMu.Unlock()
+
+	for _, ch := range chs {
+		ch <- dest
+	}
+}
+
+// LookupDestinationSync performs a synchronous destination lookup by initiating
+// the async LookupDestinationWithContext and waiting for the OnDestination callback.
+func (sess *I2CPSession) LookupDestinationSync(ctx context.Context, name string, timeout time.Duration) (*go_i2cp.Destination, error) {
+	sess.mu.RLock()
+	i2cpSession := sess.session
+	sess.mu.RUnlock()
+
+	if i2cpSession == nil {
+		return nil, fmt.Errorf("underlying I2CP session not available")
+	}
+
+	resultCh := make(chan *go_i2cp.Destination, 1)
+
+	sess.pendingLookupsMu.Lock()
+	if sess.pendingLookups == nil {
+		sess.pendingLookups = make(map[string][]chan *go_i2cp.Destination)
+	}
+	sess.pendingLookups[name] = append(sess.pendingLookups[name], resultCh)
+	sess.pendingLookupsMu.Unlock()
+
+	if err := i2cpSession.LookupDestinationWithContext(ctx, name, timeout); err != nil {
+		// Clean up the pending lookup on error
+		sess.pendingLookupsMu.Lock()
+		chs := sess.pendingLookups[name]
+		for i, ch := range chs {
+			if ch == resultCh {
+				sess.pendingLookups[name] = append(chs[:i], chs[i+1:]...)
+				break
+			}
+		}
+		if len(sess.pendingLookups[name]) == 0 {
+			delete(sess.pendingLookups, name)
+		}
+		sess.pendingLookupsMu.Unlock()
+		return nil, err
+	}
+
+	select {
+	case dest := <-resultCh:
+		return dest, nil
+	case <-ctx.Done():
+		// Clean up on context cancellation
+		sess.pendingLookupsMu.Lock()
+		chs := sess.pendingLookups[name]
+		for i, ch := range chs {
+			if ch == resultCh {
+				sess.pendingLookups[name] = append(chs[:i], chs[i+1:]...)
+				break
+			}
+		}
+		if len(sess.pendingLookups[name]) == 0 {
+			delete(sess.pendingLookups, name)
+		}
+		sess.pendingLookupsMu.Unlock()
+		return nil, ctx.Err()
 	}
 }
 

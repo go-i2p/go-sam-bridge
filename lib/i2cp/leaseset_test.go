@@ -162,7 +162,7 @@ func TestIntegration_DestinationResolverAdapter_Resolve(t *testing.T) {
 	}
 
 	// Create destination resolver adapter
-	resolver, err := NewDestinationResolverAdapter(session.Session(), 30*time.Second)
+	resolver, err := NewDestinationResolverAdapter(session, 30*time.Second)
 	if err != nil {
 		t.Fatalf("failed to create resolver: %v", err)
 	}
