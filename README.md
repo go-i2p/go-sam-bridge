@@ -30,6 +30,8 @@ This bridge is built on pure Go I2P libraries:
 
 Unlike other SAM implementations that require a separate I2P router, `go-sam-bridge` directly embeds I2P routing in Go. If no I2CP listener is detected on the configured address, an embedded I2P router will be started automatically.
 
+Also, `go-sam-bridge` is capable of detecting an I2P router on the host and determining if it has a SAM API enabled. If an I2CP port is available on port 7654 but a SAM API is not available on the configured port(`7656` by default), then `go-sam-bridge` launches attached to the I2CP port provided by the host.
+
 ## Status
 
 ✅ **Core Implementation Complete** - All SAMv3.3 protocol features are implemented.
