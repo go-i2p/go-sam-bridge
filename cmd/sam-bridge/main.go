@@ -65,33 +65,37 @@ func main() {
 		"commit":    GitCommit,
 	}).Info("Starting SAM bridge server")
 
-	// Connect to I2P router for I2CP integration
-	i2cpClient, err := connectI2CP(cfg, log)
-	if err != nil {
-		log.WithError(err).Error("Failed to connect to I2P router")
-		log.Info("Make sure I2P is running and SAM interface is enabled")
-		os.Exit(1)
-	}
-	defer i2cpClient.Close()
-
-	log.WithField("version", i2cpClient.RouterVersion()).Info("Connected to I2P router")
-
-	// Create I2CP provider adapter
-	i2cpProvider := newI2CPProviderAdapter(i2cpClient)
-
 	// Parse datagram port
 	datagramPort := parseDatagramPort(cfg.UDPAddr)
 
-	// Create bridge with embedding API
-	bridge, err := embedding.New(
+	// Attempt I2CP connection; failure is non-fatal — the embedded router will be
+	// started automatically by embedding.New() when port 7654 is free.
+	var i2cpClient *i2cp.Client
+	client, err := connectI2CP(cfg, log)
+	if err != nil {
+		log.WithError(err).Warn("No external I2P router available; using embedded router fallback")
+		log.Info("STREAM/DATAGRAM/RAW sessions will be activated once the embedded router is ready")
+	} else {
+		i2cpClient = client
+		defer i2cpClient.Close()
+		log.WithField("version", i2cpClient.RouterVersion()).Info("Connected to I2P router")
+	}
+
+	// Build bridge options — I2CP provider is optional.
+	opts := []embedding.Option{
 		embedding.WithListenAddr(cfg.ListenAddr),
 		embedding.WithI2CPAddr(cfg.I2CPAddr),
 		embedding.WithDatagramPort(datagramPort),
-		embedding.WithI2CPProvider(i2cpProvider),
 		embedding.WithLogger(log),
 		embedding.WithDebug(cfg.Debug),
 		embedding.WithHandlerRegistrar(createHandlerRegistrar(i2cpClient)),
-	)
+	}
+	if i2cpClient != nil {
+		opts = append(opts, embedding.WithI2CPProvider(newI2CPProviderAdapter(i2cpClient)))
+	}
+
+	// Create bridge with embedding API
+	bridge, err := embedding.New(opts...)
 	if err != nil {
 		log.WithError(err).Error("Failed to create bridge")
 		os.Exit(1)
@@ -208,14 +212,22 @@ func parseDatagramPort(addr string) int {
 	return embedding.DefaultDatagramPort
 }
 
-// createHandlerRegistrar returns a custom handler registrar with I2CP integration.
-// This extends the default registrar with I2CP-specific session callbacks.
+// createHandlerRegistrar returns a custom handler registrar with optional I2CP integration.
+// When i2cpClient is nil (no external I2P router), only default handlers are registered
+// and the embedded router fallback handles connectivity.
 func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarFunc {
 	return func(router *handler.Router, deps *embedding.Dependencies) {
 		log := deps.Logger
 
 		// Use default handler registrar for base handlers
 		embedding.DefaultHandlerRegistrar()(router, deps)
+
+		// Without an I2CP client, default handlers are sufficient.
+		// The embedded router will wire transport once it is ready.
+		if i2cpClient == nil {
+			log.Info("No I2CP client: using default handlers (embedded router mode)")
+			return
+		}
 
 		// Get the SESSION handler to add I2CP callback
 		// The default registrar already created it, we need to extend it

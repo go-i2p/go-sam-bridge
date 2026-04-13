@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/go-i2p/go-sam-bridge/lib/session"
@@ -172,6 +173,9 @@ func TestStreamingConnector_Connect(t *testing.T) {
 		_, err := connector.Connect(unknownSess, "dest", 0, 80)
 		if err == nil {
 			t.Error("Expected error for unregistered session")
+		}
+		if !strings.Contains(err.Error(), "no stream manager registered for session") {
+			t.Errorf("expected 'no stream manager registered' error, got: %q", err.Error())
 		}
 	})
 

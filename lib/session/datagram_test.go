@@ -3,6 +3,7 @@ package session
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -540,6 +541,18 @@ func TestErrDatagramSendNotImplemented(t *testing.T) {
 		}
 		if len(msg) < 20 {
 			t.Error("error message should be descriptive")
+		}
+	})
+
+	t.Run("unwired session send contains DatagramConn not configured", func(t *testing.T) {
+		sess := NewDatagramSession("test-unwired", nil, nil, nil)
+		sess.Activate()
+		err := sess.Send("test-dest", []byte("data"), DatagramSendOptions{})
+		if err == nil {
+			t.Fatal("expected error from unwired Send()")
+		}
+		if !strings.Contains(err.Error(), "DatagramConn not configured") {
+			t.Errorf("expected error to contain 'DatagramConn not configured', got: %q", err.Error())
 		}
 	})
 }

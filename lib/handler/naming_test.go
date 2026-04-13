@@ -74,7 +74,7 @@ func TestNamingHandler_Handle(t *testing.T) {
 					"NAME": "example.i2p",
 				},
 			},
-			wantResult: protocol.ResultKeyNotFound, // Not implemented yet
+			wantResult: protocol.ResultI2PError, // no resolver configured
 			wantName:   "example.i2p",
 		},
 		{
@@ -86,7 +86,7 @@ func TestNamingHandler_Handle(t *testing.T) {
 					"NAME": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv.b32.i2p",
 				},
 			},
-			wantResult: protocol.ResultKeyNotFound, // Not implemented yet
+			wantResult: protocol.ResultI2PError, // no resolver configured
 		},
 	}
 

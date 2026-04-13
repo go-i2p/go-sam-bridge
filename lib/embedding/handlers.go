@@ -123,6 +123,10 @@ func createStreamManagerCallback(
 ) handler.SessionCreatedCallback {
 	return func(sess session.Session, i2cpHandle session.I2CPSessionHandle) {
 		if i2cpHandle == nil || deps.I2CPClient == nil {
+			deps.Logger.WithFields(map[string]interface{}{
+				"sessionID": sess.ID(),
+				"style":     sess.Style(),
+			}).Warn("Session created without I2CP transport: STREAM/DATAGRAM/RAW send not available until I2CP is connected")
 			return
 		}
 

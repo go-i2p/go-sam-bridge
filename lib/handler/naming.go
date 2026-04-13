@@ -133,6 +133,11 @@ func (h *NamingHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.R
 	}
 
 	// Standard name resolution without options
+	// Return I2P_ERROR (not KEY_NOT_FOUND) when the resolver is unavailable,
+	// so clients can distinguish "not configured" from "name does not exist".
+	if h.resolver == nil && (isB32Address(name) || isI2PHostname(name)) {
+		return namingI2PError(name, "Naming lookup requires I2CP connection"), nil
+	}
 	dest, err := h.resolveName(name)
 	if err != nil {
 		return namingKeyNotFound(name), nil
