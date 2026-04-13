@@ -4,7 +4,6 @@ package handler
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
@@ -95,19 +94,19 @@ func (h *DatagramHandler) handleSend(ctx *Context, cmd *protocol.Command) (*prot
 	}
 
 	// Parse and validate required parameters
-	dest, size, resp := h.parseDatagramRequiredParams(cmd)
+	dest, size, resp := parseSendRequiredParams(cmd, session.MaxDatagramSize, datagramInvalidKey)
 	if resp != nil {
 		return resp, nil
 	}
 
 	// Parse port options (SAM 3.2+)
-	fromPort, toPort, resp := h.parseDatagramPortOptions(cmd)
+	fromPort, toPort, resp := parseSendPortOptions(cmd, datagramInvalidKey)
 	if resp != nil {
 		return resp, nil
 	}
 
 	// Parse SAM 3.3 options
-	sam33Opts, resp := h.parseDatagramSAM33Options(cmd)
+	sam33Opts, resp := parseSendSAM33Options(cmd, datagramInvalidKey)
 	if resp != nil {
 		return resp, nil
 	}
@@ -156,97 +155,8 @@ func (h *DatagramHandler) lookupDatagramSession(ctx *Context) (session.DatagramS
 	return dgSess, nil
 }
 
-// parseDatagramRequiredParams validates and extracts DESTINATION and SIZE from the command.
-func (h *DatagramHandler) parseDatagramRequiredParams(cmd *protocol.Command) (string, int, *protocol.Response) {
-	dest := cmd.Get("DESTINATION")
-	if dest == "" {
-		return "", 0, datagramInvalidKey("missing DESTINATION")
-	}
-
-	sizeStr := cmd.Get("SIZE")
-	if sizeStr == "" {
-		return "", 0, datagramInvalidKey("missing SIZE")
-	}
-	size, err := strconv.Atoi(sizeStr)
-	if err != nil || size < 1 {
-		return "", 0, datagramInvalidKey("invalid SIZE: must be positive integer")
-	}
-	if size > session.MaxDatagramSize {
-		return "", 0, datagramInvalidKey(fmt.Sprintf("SIZE exceeds maximum (%d)", session.MaxDatagramSize))
-	}
-	return dest, size, nil
-}
-
-// parseDatagramPortOptions extracts FROM_PORT and TO_PORT from the command (SAM 3.2+).
-func (h *DatagramHandler) parseDatagramPortOptions(cmd *protocol.Command) (int, int, *protocol.Response) {
-	var fromPort, toPort int
-	var err error
-
-	if fromPortStr := cmd.Get("FROM_PORT"); fromPortStr != "" {
-		fromPort, err = parseDatagramPort(fromPortStr, "FROM_PORT")
-		if err != nil {
-			return 0, 0, datagramInvalidKey(err.Error())
-		}
-	}
-
-	if toPortStr := cmd.Get("TO_PORT"); toPortStr != "" {
-		toPort, err = parseDatagramPort(toPortStr, "TO_PORT")
-		if err != nil {
-			return 0, 0, datagramInvalidKey(err.Error())
-		}
-	}
-	return fromPort, toPort, nil
-}
-
-// datagramSAM33Options holds parsed SAM 3.3 options for datagrams.
-type datagramSAM33Options struct {
-	SendTags        int
-	TagThreshold    int
-	Expires         int
-	SendLeaseset    bool
-	SendLeasesetSet bool
-}
-
-// parseDatagramSAM33Options extracts SAM 3.3 specific options from the command.
-func (h *DatagramHandler) parseDatagramSAM33Options(cmd *protocol.Command) (*datagramSAM33Options, *protocol.Response) {
-	opts := &datagramSAM33Options{
-		SendLeaseset: true, // Default per SAMv3.md
-	}
-	var err error
-
-	if sendTagsStr := cmd.Get("SEND_TAGS"); sendTagsStr != "" {
-		opts.SendTags, err = parseSAM33Option(sendTagsStr, "SEND_TAGS", 0, 15)
-		if err != nil {
-			return nil, datagramInvalidKey(err.Error())
-		}
-	}
-
-	if tagThresholdStr := cmd.Get("TAG_THRESHOLD"); tagThresholdStr != "" {
-		opts.TagThreshold, err = parseSAM33Option(tagThresholdStr, "TAG_THRESHOLD", 0, 15)
-		if err != nil {
-			return nil, datagramInvalidKey(err.Error())
-		}
-	}
-
-	if expiresStr := cmd.Get("EXPIRES"); expiresStr != "" {
-		opts.Expires, err = parseSAM33Option(expiresStr, "EXPIRES", 0, 86400)
-		if err != nil {
-			return nil, datagramInvalidKey(err.Error())
-		}
-	}
-
-	if sendLeasesetStr := cmd.Get("SEND_LEASESET"); sendLeasesetStr != "" {
-		opts.SendLeaseset, err = parseBoolOption(sendLeasesetStr, "SEND_LEASESET")
-		if err != nil {
-			return nil, datagramInvalidKey(err.Error())
-		}
-		opts.SendLeasesetSet = true
-	}
-	return opts, nil
-}
-
 // buildDatagramSendOptions constructs DatagramSendOptions from parsed parameters.
-func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort int, sam33 *datagramSAM33Options) session.DatagramSendOptions {
+func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort int, sam33 *sendSAM33Options) session.DatagramSendOptions {
 	return session.DatagramSendOptions{
 		FromPort:        fromPort,
 		ToPort:          toPort,
@@ -255,45 +165,6 @@ func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort int, sam33 *
 		Expires:         sam33.Expires,
 		SendLeaseset:    sam33.SendLeaseset,
 		SendLeasesetSet: sam33.SendLeasesetSet,
-	}
-}
-
-// parseDatagramPort validates and parses a port string.
-// Returns error if port is invalid (negative, > 65535, or non-numeric).
-func parseDatagramPort(s, name string) (int, error) {
-	port, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("%s: invalid port value", name)
-	}
-	if port < 0 || port > 65535 {
-		return 0, fmt.Errorf("%s: port must be 0-65535", name)
-	}
-	return port, nil
-}
-
-// parseSAM33Option parses a SAM 3.3 integer option with range validation.
-// Per SAMv3.md, these options are optional and have router-dependent defaults.
-func parseSAM33Option(s, name string, min, max int) (int, error) {
-	val, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("%s: invalid value", name)
-	}
-	if val < min || val > max {
-		return 0, fmt.Errorf("%s: value must be %d-%d", name, min, max)
-	}
-	return val, nil
-}
-
-// parseBoolOption parses a boolean option value.
-// Accepts "true"/"false" (case-insensitive) per SAM specification.
-func parseBoolOption(s, name string) (bool, error) {
-	switch s {
-	case "true", "TRUE", "True":
-		return true, nil
-	case "false", "FALSE", "False":
-		return false, nil
-	default:
-		return false, fmt.Errorf("%s: must be true or false", name)
 	}
 }
 

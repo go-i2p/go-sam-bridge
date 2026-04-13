@@ -645,7 +645,7 @@ func TestDatagramHandler_HandleSend_RejectsIDParameter(t *testing.T) {
 	}
 }
 
-func TestParseDatagramPort(t *testing.T) {
+func TestParseSendPort_Datagram(t *testing.T) {
 	tests := []struct {
 		input   string
 		name    string
@@ -663,13 +663,13 @@ func TestParseDatagramPort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := parseDatagramPort(tt.input, tt.name)
+			got, err := parseSendPort(tt.input, tt.name)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("parseDatagramPort(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				t.Errorf("parseSendPort(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("parseDatagramPort(%q) = %v, want %v", tt.input, got, tt.want)
+				t.Errorf("parseSendPort(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
 	}

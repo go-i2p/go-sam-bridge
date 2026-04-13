@@ -394,7 +394,7 @@ func TestRawHandler_HandleSend_WithOptions(t *testing.T) {
 	}
 }
 
-func TestParsePort(t *testing.T) {
+func TestParseSendPort_Raw(t *testing.T) {
 	tests := []struct {
 		input   string
 		name    string
@@ -412,19 +412,19 @@ func TestParsePort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := parsePort(tt.input, tt.name)
+			got, err := parseSendPort(tt.input, tt.name)
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("parsePort(%q) expected error, got nil", tt.input)
+					t.Errorf("parseSendPort(%q) expected error, got nil", tt.input)
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("parsePort(%q) unexpected error = %v", tt.input, err)
+				t.Errorf("parseSendPort(%q) unexpected error = %v", tt.input, err)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("parsePort(%q) = %d, want %d", tt.input, got, tt.want)
+				t.Errorf("parseSendPort(%q) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
 	}
