@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
@@ -134,22 +133,39 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 		return ErrDatagramSendNotImplemented
 	}
 
-	// Warn if SAM 3.3 options are specified but not yet wired to I2CP
-	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
-		log.Printf("WARN: SAM 3.3 send options (SEND_TAGS=%d, TAG_THRESHOLD=%d, EXPIRES=%d, SEND_LEASESET=%v) are not yet passed to I2CP",
-			opts.SendTags, opts.TagThreshold, opts.Expires, opts.SendLeaseset)
-	}
-
 	// Determine destination port (use ToPort if specified, otherwise 0)
 	toPort := uint16(opts.ToPort)
 
-	// Send the datagram using go-datagrams
-	// DATAGRAM uses ProtocolDatagram1 (17) for repliable authenticated datagrams
-	err := datagramConn.SendTo(data, dest, toPort)
-	if err != nil {
-		return fmt.Errorf("failed to send datagram: %w", err)
+	// Forward SAM 3.3 options to go-datagrams when specified
+	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
+		dgOpts := datagrams.EmptyOptions()
+		if opts.SendTags > 0 {
+			dgOpts.Set("SEND_TAGS", fmt.Sprintf("%d", opts.SendTags))
+		}
+		if opts.TagThreshold > 0 {
+			dgOpts.Set("TAG_THRESHOLD", fmt.Sprintf("%d", opts.TagThreshold))
+		}
+		if opts.Expires > 0 {
+			dgOpts.Set("EXPIRES", fmt.Sprintf("%d", opts.Expires))
+		}
+		if opts.SendLeasesetSet {
+			if opts.SendLeaseset {
+				dgOpts.Set("SEND_LEASESET", "true")
+			} else {
+				dgOpts.Set("SEND_LEASESET", "false")
+			}
+		}
+		if err := datagramConn.SendToWithOptions(data, dest, toPort, dgOpts); err != nil {
+			return fmt.Errorf("failed to send datagram: %w", err)
+		}
+		return nil
 	}
 
+	// Send the datagram using go-datagrams
+	// DATAGRAM uses ProtocolDatagram1 (17) for repliable authenticated datagrams
+	if err := datagramConn.SendTo(data, dest, toPort); err != nil {
+		return fmt.Errorf("failed to send datagram: %w", err)
+	}
 	return nil
 }
 

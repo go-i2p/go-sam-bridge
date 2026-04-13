@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"crypto/subtle"
 	"errors"
 	"sort"
 	"sync"
@@ -127,7 +128,10 @@ func (s *AuthStore) CheckPassword(username, password string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	storedPassword, ok := s.users[username]
-	return ok && storedPassword == password
+	if !ok {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(storedPassword), []byte(password)) == 1
 }
 
 // UserCount returns the number of registered users.
