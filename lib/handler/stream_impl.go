@@ -252,15 +252,20 @@ type StreamingForwarder struct {
 
 	// managers maps session ID to stream manager.
 	managers map[string]StreamManager
+
+	// tlsClientConfig is the TLS configuration used when SSL=true in STREAM FORWARD.
+	// When nil, the default TLS config is used (certificate verification enabled).
+	tlsClientConfig *tls.Config
 }
 
 // forwardState tracks the state of a forwarding listener.
 type forwardState struct {
-	listener   net.Listener
-	targetHost string
-	targetPort int
-	ssl        bool
-	cancel     context.CancelFunc
+	listener        net.Listener
+	targetHost      string
+	targetPort      int
+	ssl             bool
+	tlsClientConfig *tls.Config
+	cancel          context.CancelFunc
 }
 
 // NewStreamingForwarder creates a new StreamingForwarder.
@@ -276,6 +281,15 @@ func (f *StreamingForwarder) RegisterManager(sessionID string, manager StreamMan
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.managers[sessionID] = manager
+}
+
+// SetTLSClientConfig sets the TLS configuration for SSL STREAM FORWARD connections.
+// Pass a config with a custom CA pool for targets using self-signed certificates.
+// When not set, the default system CA pool is used (certificate verification enabled).
+func (f *StreamingForwarder) SetTLSClientConfig(cfg *tls.Config) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tlsClientConfig = cfg
 }
 
 // UnregisterManager removes a StreamManager for a session.
@@ -318,11 +332,12 @@ func (f *StreamingForwarder) Forward(sess session.Session, host string, port int
 	ctx, cancel := context.WithCancel(context.Background())
 
 	state := &forwardState{
-		listener:   listener,
-		targetHost: host,
-		targetPort: port,
-		ssl:        ssl,
-		cancel:     cancel,
+		listener:        listener,
+		targetHost:      host,
+		targetPort:      port,
+		ssl:             ssl,
+		tlsClientConfig: f.tlsClientConfig,
+		cancel:          cancel,
 	}
 	f.forwarders[sess.ID()] = state
 
@@ -366,9 +381,11 @@ func (f *StreamingForwarder) handleForward(ctx context.Context, i2pConn net.Conn
 
 	if state.ssl {
 		// Use TLS for local connection per SAM 3.2+ SSL option
-		localConn, err = tls.Dial("tcp", addr, &tls.Config{
-			InsecureSkipVerify: true, // Local connection, often self-signed
-		})
+		tlsCfg := state.tlsClientConfig
+		if tlsCfg == nil {
+			tlsCfg = &tls.Config{}
+		}
+		localConn, err = tls.Dial("tcp", addr, tlsCfg)
 	} else {
 		localConn, err = net.Dial("tcp", addr)
 	}
