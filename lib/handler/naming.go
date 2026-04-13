@@ -55,6 +55,11 @@ type LeasesetLookupProvider interface {
 // NamingHandler handles NAMING LOOKUP commands per SAM 3.0-3.3.
 // Resolves I2P hostnames, .b32.i2p addresses, and special names like ME.
 // As of API 0.9.66, supports OPTIONS=true for leaseset option queries.
+//
+// NOTE: B33 blinded destination resolution (.b32.i2p addresses with extended
+// 55-60 character base32 prefixes) is delegated to go-i2cp without dedicated
+// decode or blinding-factor extraction logic. B33 support depends on go-i2cp
+// router-level handling, which is currently unverified.
 type NamingHandler struct {
 	destManager      destination.Manager
 	leasesetProvider LeasesetLookupProvider

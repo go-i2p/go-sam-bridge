@@ -268,12 +268,19 @@ func TestAuthStore_ToConfig(t *testing.T) {
 		t.Errorf("config should have 2 users, got %d", len(cfg.Users))
 	}
 
-	if cfg.Users["user1"] != "pass1" {
-		t.Errorf("user1 password mismatch")
+	// Passwords in config should be bcrypt hashes, not plaintext
+	if cfg.Users["user1"] == "pass1" {
+		t.Error("user1 password should be a bcrypt hash, not plaintext")
+	}
+	if !isBcryptHash(cfg.Users["user1"]) {
+		t.Error("user1 password should be a bcrypt hash")
 	}
 
-	if cfg.Users["user2"] != "pass2" {
-		t.Errorf("user2 password mismatch")
+	if cfg.Users["user2"] == "pass2" {
+		t.Error("user2 password should be a bcrypt hash, not plaintext")
+	}
+	if !isBcryptHash(cfg.Users["user2"]) {
+		t.Error("user2 password should be a bcrypt hash")
 	}
 }
 

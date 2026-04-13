@@ -18,7 +18,7 @@ A pure Go implementation of the SAMv3.3 (Simple Anonymous Messaging) bridge for 
 - PRIMARY sessions with multiplexed subsessions
 - Modern cryptography (Ed25519 signatures, ECIES-X25519 encryption)
 - Offline signature support
-- B32/B33 address resolution
+- B32 address resolution; B33 blinded resolution delegated to go-i2cp (unverified)
 
 ## Architecture
 

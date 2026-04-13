@@ -1,10 +1,12 @@
 package bridge
 
 import (
-	"crypto/subtle"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ErrUserNotFound is returned when attempting to remove a non-existent user.
@@ -37,10 +39,20 @@ func NewAuthStore() *AuthStore {
 
 // NewAuthStoreFromConfig creates an AuthStore initialized from an AuthConfig.
 // This allows the bridge server to use existing configuration.
+// Password values that are already bcrypt hashes (prefix "$2") are stored as-is;
+// plaintext passwords are hashed automatically.
 func NewAuthStoreFromConfig(cfg AuthConfig) *AuthStore {
 	users := make(map[string]string)
 	for k, v := range cfg.Users {
-		users[k] = v
+		if isBcryptHash(v) {
+			users[k] = v
+		} else {
+			hash, err := bcrypt.GenerateFromPassword([]byte(v), bcrypt.DefaultCost)
+			if err != nil {
+				continue
+			}
+			users[k] = string(hash)
+		}
 	}
 	return &AuthStore{
 		enabled: cfg.Required,
@@ -66,6 +78,7 @@ func (s *AuthStore) SetAuthEnabled(enabled bool) {
 }
 
 // AddUser adds or updates a user with the given password.
+// The password is hashed with bcrypt before storage (OWASP A07 compliance).
 // Returns ErrEmptyUsername if the username is empty.
 // Implements handler.AuthManager interface.
 func (s *AuthStore) AddUser(username, password string) error {
@@ -73,9 +86,14 @@ func (s *AuthStore) AddUser(username, password string) error {
 		return ErrEmptyUsername
 	}
 
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.users[username] = password
+	s.users[username] = string(hash)
 	return nil
 }
 
@@ -123,15 +141,16 @@ func (s *AuthStore) ListUsers() []string {
 
 // CheckPassword verifies the password for a user.
 // Returns true if the user exists and the password matches.
+// Uses bcrypt comparison which is inherently constant-time.
 // This method is used by the HELLO handler for authentication.
 func (s *AuthStore) CheckPassword(username, password string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	storedPassword, ok := s.users[username]
+	storedHash, ok := s.users[username]
 	if !ok {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(storedPassword), []byte(password)) == 1
+	return bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)) == nil
 }
 
 // UserCount returns the number of registered users.
@@ -142,6 +161,7 @@ func (s *AuthStore) UserCount() int {
 }
 
 // ToConfig exports the current authentication state as an AuthConfig.
+// Passwords are exported as bcrypt hashes, never as plaintext.
 // This can be used for persistence or configuration snapshot.
 func (s *AuthStore) ToConfig() AuthConfig {
 	s.mu.RLock()
@@ -156,4 +176,9 @@ func (s *AuthStore) ToConfig() AuthConfig {
 		Required: s.enabled,
 		Users:    users,
 	}
+}
+
+// isBcryptHash detects whether a value is already a bcrypt hash.
+func isBcryptHash(s string) bool {
+	return strings.HasPrefix(s, "$2")
 }

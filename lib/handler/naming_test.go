@@ -385,6 +385,19 @@ func (m *mockLeasesetProvider) LookupWithOptions(name string) (*LeasesetLookupRe
 	return m.result, nil
 }
 
+// mockResolver implements DestinationResolver for testing.
+type mockResolver struct {
+	dest string
+	err  error
+}
+
+func (m *mockResolver) Resolve(_ context.Context, _ string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.dest, nil
+}
+
 func TestNamingHandler_HandleOptionsTrue(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -1082,4 +1095,60 @@ func TestNamingHandler_Base64DestinationPassthrough(t *testing.T) {
 	if !strings.Contains(respStr, "VALUE="+destB64) {
 		t.Errorf("Handle() = %q, want VALUE=%s", respStr, destB64)
 	}
+}
+
+// TestNamingB33 verifies the current behavior for B33 blinded destination addresses.
+// B33 addresses use an extended base32 prefix (55-60 characters) with blinding parameters.
+// Currently, B33 addresses are treated as regular .b32.i2p and delegated to go-i2cp.
+// Without a resolver, the handler returns I2P_ERROR (not KEY_NOT_FOUND).
+func TestNamingB33(t *testing.T) {
+	// Synthetic B33 address: 60-character base32 prefix (longer than standard B32's ~52 chars)
+	b33Addr := "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwxyz23.b32.i2p"
+
+	t.Run("b33 without resolver returns I2P_ERROR", func(t *testing.T) {
+		h := NewNamingHandler(&mockManager{})
+		ctx := NewContext(&mockConn{}, nil)
+		cmd := &protocol.Command{
+			Verb:   "NAMING",
+			Action: "LOOKUP",
+			Options: map[string]string{
+				"NAME": b33Addr,
+			},
+		}
+
+		resp, err := h.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("Handle() error = %v", err)
+		}
+		respStr := resp.String()
+		// B33 treated as .b32.i2p — without resolver, returns I2P_ERROR
+		if !strings.Contains(respStr, "RESULT=I2P_ERROR") {
+			t.Errorf("Handle(%s) = %q, want RESULT=I2P_ERROR", b33Addr, respStr)
+		}
+	})
+
+	t.Run("b33 with resolver delegates lookup", func(t *testing.T) {
+		h := NewNamingHandler(&mockManager{})
+		h.SetDestinationResolver(&mockResolver{dest: "resolved-b33-dest"})
+		ctx := NewContext(&mockConn{}, nil)
+		cmd := &protocol.Command{
+			Verb:   "NAMING",
+			Action: "LOOKUP",
+			Options: map[string]string{
+				"NAME": b33Addr,
+			},
+		}
+
+		resp, err := h.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("Handle() error = %v", err)
+		}
+		respStr := resp.String()
+		if !strings.Contains(respStr, "RESULT=OK") {
+			t.Errorf("Handle(%s) = %q, want RESULT=OK", b33Addr, respStr)
+		}
+		if !strings.Contains(respStr, "VALUE=resolved-b33-dest") {
+			t.Errorf("Handle(%s) = %q, want VALUE=resolved-b33-dest", b33Addr, respStr)
+		}
+	})
 }

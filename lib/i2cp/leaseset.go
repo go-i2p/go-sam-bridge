@@ -86,23 +86,19 @@ func (a *LeasesetAdapter) LookupWithOptions(name string) (*handler.LeasesetLooku
 	// Get the destination as Base64
 	destBase64 := dest.Base64()
 
-	// TODO: When go-i2cp supports leaseset options querying, extract options here.
-	// For now, return an empty options list since go-i2cp doesn't yet support
-	// querying leaseset service records / options.
+	// go-i2cp does not yet support leaseset options querying.
+	// Return the destination via error so the handler can inform the client
+	// that OPTIONS=true is not yet functional (AUDIT.md MEDIUM finding).
 	//
-	// Per I2P specification, leaseset options include:
+	// When go-i2cp adds leaseset query support, replace this with option extraction:
 	//   - Service records (e.g., "service.name=value")
 	//   - Expiration information
 	//   - Other metadata
 	//
 	// The I2CP protocol would need to use a LookupLeaseSet message type or
 	// parse the returned leaseset data to extract these options.
-
-	return &handler.LeasesetLookupResult{
-		Destination: destBase64,
-		Options:     nil,
-		Found:       true,
-	}, nil
+	_ = destBase64
+	return nil, fmt.Errorf("OPTIONS=true not yet supported: go-i2cp does not expose leaseset options")
 }
 
 // Compile-time check that LeasesetAdapter implements handler.LeasesetLookupProvider.
