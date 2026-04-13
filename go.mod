@@ -7,7 +7,7 @@ require (
 	github.com/go-i2p/go-datagrams v0.1.2
 	github.com/go-i2p/go-i2cp v0.1.4-0.20260410222419-eb65cbb4ebaa
 	github.com/go-i2p/go-i2p v0.1.4-0.20260410153854-7378e61b4d26
-	github.com/go-i2p/go-streaming v0.1.2
+	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/sirupsen/logrus v1.9.4
 )

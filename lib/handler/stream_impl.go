@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-i2p/go-sam-bridge/lib/session"
+	gostreaming "github.com/go-i2p/go-streaming"
 )
 
 // StreamingConnector implements StreamConnector using go-streaming.
@@ -231,9 +232,14 @@ func (a *StreamingAcceptor) Accept(sess session.Session) (net.Conn, *AcceptInfo,
 		ToPort:      0,
 	}
 
-	// Try to extract I2P-specific info from the connection's address
+	// Prefer peer Base64 destination when go-streaming exposes it.
+	// Fall back to string form for non-I2P address types used in tests/mocks.
 	if remoteAddr := conn.RemoteAddr(); remoteAddr != nil {
-		info.Destination = remoteAddr.String()
+		if b64, ok := gostreaming.PeerDestinationBase64(remoteAddr); ok && b64 != "" {
+			info.Destination = b64
+		} else {
+			info.Destination = remoteAddr.String()
+		}
 	}
 
 	return conn, info, nil
