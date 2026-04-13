@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
+	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/sirupsen/logrus"
 )
@@ -58,6 +59,16 @@ func WithRegistry(r session.Registry) Option {
 func WithI2CPProvider(p session.I2CPSessionProvider) Option {
 	return func(c *Config) {
 		c.I2CPProvider = p
+	}
+}
+
+// WithI2CPClient sets the I2CP client for use by DefaultHandlerRegistrar.
+// When provided, the default registrar wires StreamManagers for STREAM sessions
+// and DatagramConns for DATAGRAM/RAW/DATAGRAM2/DATAGRAM3 sessions.
+// Typically called alongside WithI2CPProvider when both are derived from the same client.
+func WithI2CPClient(client *i2cp.Client) Option {
+	return func(c *Config) {
+		c.I2CPClient = client
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
+	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/sirupsen/logrus"
 )
@@ -78,6 +79,12 @@ type Config struct {
 	// Logger is a custom logger instance.
 	// If nil, a default logger is created.
 	Logger *logrus.Logger
+
+	// I2CPClient is the I2CP client for I2CP-backed sessions.
+	// When provided alongside I2CPProvider, DefaultHandlerRegistrar uses it to
+	// wire StreamManagers for STREAM sessions and DatagramConns for datagram sessions.
+	// If nil, streaming and datagram send paths will not be functional.
+	I2CPClient *i2cp.Client
 
 	// HandlerRegistrar is a custom function to register handlers.
 	// If nil, DefaultHandlerRegistrar is used.

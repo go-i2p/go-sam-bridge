@@ -228,7 +228,7 @@ func (l *UDPListener) routeToSession(sess session.Session, header *DatagramHeade
 	switch sess.Style() {
 	case session.StyleRaw:
 		l.routeToRawSession(sess, header, payload)
-	case session.StyleDatagram:
+	case session.StyleDatagram, session.StyleDatagram2, session.StyleDatagram3:
 		l.routeToDatagramSession(sess, header, payload)
 	default:
 		// Session style doesn't support datagrams - drop

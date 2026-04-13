@@ -28,7 +28,9 @@ This bridge is built on pure Go I2P libraries:
 - **[go-streaming](https://github.com/go-i2p/go-streaming)** - Reliable ordered streams over I2P
 - **[go-datagrams](https://github.com/go-i2p/go-datagrams)** - Datagram support (repliable, raw, and new formats)
 
-Unlike other SAM implementations that require a separate I2P router, `go-sam-bridge` directly embeds I2P routing in Go. If no I2CP listener is detected on the configured address, an embedded I2P router will be started automatically.
+Unlike other SAM implementations that require a separate I2P router, `go-sam-bridge` directly embeds I2P routing in Go. If no I2CP listener is detected on the configured address, an embedded I2P router will be started automatically when using the library API (`embedding.New()`).
+
+> **Note for binary users:** The `sam-bridge` binary currently requires a running I2P/I2CP daemon (`routers` port 7654). Automatic embedded-router fallback is available only via the library API (`lib/embedding`). Start `i2pd` or Java I2P first, then run `sam-bridge`.
 
 Also, `go-sam-bridge` is capable of detecting an I2P router on the host and determining if it has a SAM API enabled. If an I2CP port is available on port 7654 but a SAM API is not available on the configured port(`7656` by default), then `go-sam-bridge` launches attached to the I2CP port provided by the host.
 

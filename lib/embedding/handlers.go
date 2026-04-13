@@ -1,9 +1,13 @@
 package embedding
 
 import (
+	"github.com/go-i2p/go-datagrams"
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
+	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
+	samstreaming "github.com/go-i2p/go-sam-bridge/lib/streaming"
+	gostreaming "github.com/go-i2p/go-streaming"
 )
 
 // DefaultHandlerRegistrar returns a HandlerRegistrarFunc that registers
@@ -73,6 +77,12 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 		namingHandler := handler.NewNamingHandler(deps.DestManager)
 		if deps.DestResolver != nil {
 			namingHandler.SetDestinationResolver(deps.DestResolver)
+		} else if deps.I2CPClient != nil {
+			// Auto-create resolver from I2CP client when available (Gap 9)
+			if resolver, err := i2cp.NewClientDestinationResolverAdapter(deps.I2CPClient, 0); err == nil {
+				namingHandler.SetDestinationResolver(resolver)
+				log.Debug("Auto-wired I2CP destination resolver to NAMING handler")
+			}
 		}
 		router.Register("NAMING LOOKUP", namingHandler)
 		log.Debug("Registered NAMING handler")
@@ -103,21 +113,107 @@ func RegisterAuthHandlers(router *handler.Router, authStore *bridge.AuthStore, d
 }
 
 // createStreamManagerCallback creates a session callback that wires
-// StreamManager for STREAM sessions. This is internal and not exported.
+// StreamManager for STREAM sessions and DatagramConn for datagram/raw sessions.
+// This is internal and not exported.
 func createStreamManagerCallback(
 	deps *Dependencies,
-	connector handler.StreamConnector,
-	acceptor handler.StreamAcceptor,
-	forwarder handler.StreamForwarder,
+	connector *handler.StreamingConnector,
+	acceptor *handler.StreamingAcceptor,
+	forwarder *handler.StreamingForwarder,
 ) handler.SessionCreatedCallback {
 	return func(sess session.Session, i2cpHandle session.I2CPSessionHandle) {
-		// Only create StreamManager for STREAM sessions with I2CP integration
-		if sess.Style() != session.StyleStream || i2cpHandle == nil {
+		if i2cpHandle == nil || deps.I2CPClient == nil {
 			return
 		}
 
-		// StreamManager creation would happen here if we had access to go-streaming
-		// For now, this is a placeholder that can be extended when I2CP integration is available
-		deps.Logger.WithField("sessionID", sess.ID()).Debug("STREAM session created")
+		i2cpSess, ok := i2cpHandle.(*i2cp.I2CPSession)
+		if !ok {
+			deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot wire session: unexpected I2CP session type")
+			return
+		}
+
+		switch sess.Style() {
+		case session.StyleStream:
+			wireStreamManager(deps, i2cpSess, sess.ID(), connector, acceptor, forwarder)
+		case session.StyleDatagram, session.StyleRaw, session.StyleDatagram2, session.StyleDatagram3:
+			wireDatagramConn(deps, i2cpSess, sess)
+		}
+	}
+}
+
+// wireStreamManager creates and registers a StreamManager for a STREAM session.
+func wireStreamManager(
+	deps *Dependencies,
+	i2cpSess *i2cp.I2CPSession,
+	sessionID string,
+	connector *handler.StreamingConnector,
+	acceptor *handler.StreamingAcceptor,
+	forwarder *handler.StreamingForwarder,
+) {
+	underlyingSession := i2cpSess.Session()
+	underlyingClient := deps.I2CPClient.I2CPClient()
+	if underlyingSession == nil || underlyingClient == nil {
+		deps.Logger.WithField("sessionID", sessionID).Warn("Cannot create StreamManager: no underlying I2CP session/client")
+		return
+	}
+
+	streamManager, err := gostreaming.NewStreamManagerFromSession(underlyingClient, underlyingSession)
+	if err != nil {
+		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to create StreamManager from session")
+		return
+	}
+
+	adapter, err := samstreaming.NewAdapter(streamManager)
+	if err != nil {
+		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to create StreamManager adapter")
+		return
+	}
+
+	connector.RegisterManager(sessionID, adapter)
+	if err := acceptor.RegisterManager(sessionID, adapter); err != nil {
+		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to register acceptor StreamManager")
+	}
+	forwarder.RegisterManager(sessionID, adapter)
+
+	deps.Logger.WithField("sessionID", sessionID).Debug("Registered StreamManager for STREAM session")
+}
+
+// wireDatagramConn creates and sets a DatagramConn for a datagram/raw session.
+func wireDatagramConn(deps *Dependencies, i2cpSess *i2cp.I2CPSession, sess session.Session) {
+	setter, ok := sess.(session.DatagramConnSetter)
+	if !ok {
+		return
+	}
+
+	underlyingSession := i2cpSess.Session()
+	if underlyingSession == nil {
+		deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot create DatagramConn: no underlying I2CP session")
+		return
+	}
+
+	localPort := uint16(deps.DatagramPort)
+	protocol := datagramProtocolForStyle(sess.Style())
+
+	conn, err := datagrams.NewDatagramConnWithProtocol(underlyingSession, localPort, protocol)
+	if err != nil {
+		deps.Logger.WithField("sessionID", sess.ID()).WithError(err).Warn("Failed to create DatagramConn for session")
+		return
+	}
+
+	setter.SetDatagramConn(conn)
+	deps.Logger.WithField("sessionID", sess.ID()).WithField("style", sess.Style()).Debug("Wired DatagramConn for datagram session")
+}
+
+// datagramProtocolForStyle returns the I2CP protocol number for the given SAM session style.
+func datagramProtocolForStyle(style session.Style) uint8 {
+	switch style {
+	case session.StyleRaw:
+		return datagrams.ProtocolRaw
+	case session.StyleDatagram2:
+		return datagrams.ProtocolDatagram2
+	case session.StyleDatagram3:
+		return datagrams.ProtocolDatagram3
+	default: // StyleDatagram
+		return datagrams.ProtocolDatagram1
 	}
 }

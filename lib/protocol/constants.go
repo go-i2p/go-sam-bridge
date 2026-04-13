@@ -4,20 +4,22 @@ package protocol
 
 // SAM Protocol Verbs per SAM 3.0-3.3 specification.
 const (
-	VerbHello    = "HELLO"
-	VerbSession  = "SESSION"
-	VerbStream   = "STREAM"
-	VerbDatagram = "DATAGRAM"
-	VerbRaw      = "RAW"
-	VerbDest     = "DEST"
-	VerbNaming   = "NAMING"
-	VerbPing     = "PING"
-	VerbPong     = "PONG"
-	VerbAuth     = "AUTH"
-	VerbQuit     = "QUIT"
-	VerbStop     = "STOP"
-	VerbExit     = "EXIT"
-	VerbHelp     = "HELP"
+	VerbHello     = "HELLO"
+	VerbSession   = "SESSION"
+	VerbStream    = "STREAM"
+	VerbDatagram  = "DATAGRAM"
+	VerbDatagram2 = "DATAGRAM2"
+	VerbDatagram3 = "DATAGRAM3"
+	VerbRaw       = "RAW"
+	VerbDest      = "DEST"
+	VerbNaming    = "NAMING"
+	VerbPing      = "PING"
+	VerbPong      = "PONG"
+	VerbAuth      = "AUTH"
+	VerbQuit      = "QUIT"
+	VerbStop      = "STOP"
+	VerbExit      = "EXIT"
+	VerbHelp      = "HELP"
 )
 
 // SAM Protocol Actions per SAM 3.0-3.3 specification.

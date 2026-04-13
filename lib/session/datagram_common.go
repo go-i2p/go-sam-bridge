@@ -57,6 +57,13 @@ func resolveForwardingAddr(host string, port int) (string, int, net.Addr, error)
 	return host, port, addr, nil
 }
 
+// DatagramConnSetter is implemented by datagram and raw sessions to allow
+// wiring the go-datagrams connection after session creation.
+// This is used by the embedding layer to connect sessions to the I2CP datagram path.
+type DatagramConnSetter interface {
+	SetDatagramConn(conn *datagrams.DatagramConn)
+}
+
 // offlineSignatureHolder provides shared get/set access for offline signature data.
 // Used by DATAGRAM2 and DATAGRAM3 which both support offline signatures.
 type offlineSignatureHolder struct {

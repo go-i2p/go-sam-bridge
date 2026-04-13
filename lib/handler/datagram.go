@@ -21,11 +21,24 @@ import (
 //   - FROM_PORT, TO_PORT options added in SAM 3.2
 //   - SAM 3.3 adds SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET options
 //   - Does not support ID parameter (sends to most recently created DATAGRAM session)
-type DatagramHandler struct{}
+type DatagramHandler struct {
+	// style is the session style this handler targets (StyleDatagram, StyleDatagram2, StyleDatagram3).
+	style session.Style
+}
 
-// NewDatagramHandler creates a new DATAGRAM command handler.
+// NewDatagramHandler creates a new DATAGRAM command handler for STYLE=DATAGRAM sessions.
 func NewDatagramHandler() *DatagramHandler {
-	return &DatagramHandler{}
+	return &DatagramHandler{style: session.StyleDatagram}
+}
+
+// NewDatagram2Handler creates a new DATAGRAM2 command handler for STYLE=DATAGRAM2 sessions.
+func NewDatagram2Handler() *DatagramHandler {
+	return &DatagramHandler{style: session.StyleDatagram2}
+}
+
+// NewDatagram3Handler creates a new DATAGRAM3 command handler for STYLE=DATAGRAM3 sessions.
+func NewDatagram3Handler() *DatagramHandler {
+	return &DatagramHandler{style: session.StyleDatagram3}
 }
 
 // Handle processes DATAGRAM commands (SEND).
@@ -130,15 +143,15 @@ func (h *DatagramHandler) lookupDatagramSession(ctx *Context) (session.DatagramS
 		dgSess, ok = ctx.Session.(session.DatagramSession)
 	}
 
-	// If bound session is not DATAGRAM style, try most recently created
+	// If bound session is not the target style, try most recently created
 	if !ok && ctx.Registry != nil {
-		if mostRecent := ctx.Registry.MostRecentByStyle(session.StyleDatagram); mostRecent != nil {
+		if mostRecent := ctx.Registry.MostRecentByStyle(h.style); mostRecent != nil {
 			dgSess, ok = mostRecent.(session.DatagramSession)
 		}
 	}
 
 	if !ok || dgSess == nil {
-		return nil, datagramError("no DATAGRAM session available")
+		return nil, datagramError("no " + string(h.style) + " session available")
 	}
 	return dgSess, nil
 }
@@ -339,9 +352,11 @@ func datagramInvalidKey(msg string) *protocol.Response {
 		WithMessage(msg)
 }
 
-// RegisterDatagramHandler registers the DATAGRAM handler with the router.
-// This should be called during server initialization to enable DATAGRAM commands.
+// RegisterDatagramHandler registers DATAGRAM, DATAGRAM2, and DATAGRAM3 handlers
+// with the router per SAM 3.0-3.3 specification.
+// This should be called during server initialization to enable all datagram commands.
 func RegisterDatagramHandler(router *Router) {
-	handler := NewDatagramHandler()
-	router.Register(protocol.VerbDatagram, handler)
+	router.Register(protocol.VerbDatagram, NewDatagramHandler())
+	router.Register(protocol.VerbDatagram2, NewDatagram2Handler())
+	router.Register(protocol.VerbDatagram3, NewDatagram3Handler())
 }
