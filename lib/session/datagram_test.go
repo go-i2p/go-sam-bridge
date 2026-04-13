@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-i2p/go-datagrams"
 )
 
 func TestNewDatagramSession(t *testing.T) {
@@ -555,4 +557,77 @@ func TestErrDatagramSendNotImplemented(t *testing.T) {
 			t.Errorf("expected error to contain 'DatagramConn not configured', got: %q", err.Error())
 		}
 	})
+}
+
+type mockDatagramSender struct {
+	lastPayload []byte
+	lastDest    string
+	lastPort    uint16
+	lastOptions *datagrams.Options
+
+	sendCalled            bool
+	sendWithOptionsCalled bool
+}
+
+func (m *mockDatagramSender) SendTo(payload []byte, destinationB64 string, port uint16) error {
+	m.sendCalled = true
+	m.lastPayload = append([]byte{}, payload...)
+	m.lastDest = destinationB64
+	m.lastPort = port
+	return nil
+}
+
+func (m *mockDatagramSender) SendToWithOptions(payload []byte, destinationB64 string, port uint16, options *datagrams.Options) error {
+	m.sendWithOptionsCalled = true
+	m.lastPayload = append([]byte{}, payload...)
+	m.lastDest = destinationB64
+	m.lastPort = port
+	m.lastOptions = options
+	return nil
+}
+
+func (m *mockDatagramSender) Close() error {
+	return nil
+}
+
+func TestDatagramSend_ForwardsSAM33Options(t *testing.T) {
+	sess := NewDatagramSession("test-send-options", nil, nil, nil)
+	sess.Activate()
+
+	mockConn := &mockDatagramSender{}
+	sess.setDatagramConnForTest(mockConn)
+
+	err := sess.Send("dest-b64", []byte("payload"), DatagramSendOptions{
+		ToPort:          4242,
+		SendTags:        25,
+		TagThreshold:    13,
+		Expires:         60,
+		SendLeaseset:    true,
+		SendLeasesetSet: true,
+	})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	if !mockConn.sendWithOptionsCalled {
+		t.Fatal("expected SendToWithOptions to be called")
+	}
+	if mockConn.sendCalled {
+		t.Fatal("expected SendTo not to be called when SAM 3.3 options are set")
+	}
+	if mockConn.lastOptions == nil {
+		t.Fatal("expected options to be forwarded")
+	}
+	if got := mockConn.lastOptions.Get("SEND_TAGS"); got != "25" {
+		t.Errorf("SEND_TAGS option = %q, want %q", got, "25")
+	}
+	if got := mockConn.lastOptions.Get("TAG_THRESHOLD"); got != "13" {
+		t.Errorf("TAG_THRESHOLD option = %q, want %q", got, "13")
+	}
+	if got := mockConn.lastOptions.Get("EXPIRES"); got != "60" {
+		t.Errorf("EXPIRES option = %q, want %q", got, "60")
+	}
+	if got := mockConn.lastOptions.Get("SEND_LEASESET"); got != "true" {
+		t.Errorf("SEND_LEASESET option = %q, want %q", got, "true")
+	}
 }

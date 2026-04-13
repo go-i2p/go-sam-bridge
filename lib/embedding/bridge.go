@@ -156,102 +156,123 @@ func (b *Bridge) Start(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Only start embedded router if we created one (port was available during New())
-	if b.embeddedRouter != nil {
-		if err := b.embeddedRouter.Start(); err != nil {
-			return err
-		}
-		// Wait for embedded router to start listening with timeout
-		timeout := b.config.EmbeddedRouterTimeout
-		if timeout <= 0 {
-			timeout = DefaultEmbeddedRouterTimeout
-		}
-		deadline := time.Now().Add(timeout)
-		for checkPortAvailable(b.config.I2CPAddr) {
-			if time.Now().After(deadline) {
-				return ErrEmbeddedRouterTimeout
-			}
-			time.Sleep(500 * time.Millisecond)
-		}
-		b.deps.Logger.Info("Embedded router started")
-	}
-
 	if b.running.Load() {
 		return ErrBridgeAlreadyRunning
 	}
 
-	// Start UDP listener for datagram port 7655 per SAMv3.md
-	if b.udpListener != nil {
-		if err := b.udpListener.Start(); err != nil {
-			b.deps.Logger.WithError(err).Warn("Failed to start UDP datagram listener")
-			// Non-fatal: continue without UDP support
-		} else {
-			b.deps.Logger.WithField("addr", b.udpListener.Addr()).Info("UDP datagram listener started")
-		}
+	if err := b.startEmbeddedRouter(); err != nil {
+		return err
 	}
 
-	// Create a cancellable context for shutdown
-	ctx, cancel := context.WithCancel(ctx)
+	b.startUDPListener()
+
+	runCtx, cancel := context.WithCancel(ctx)
 	b.cancelFn = cancel
 
-	// Disable the server's own UDP listener since the embedding layer
-	// already manages UDP on the datagram port (avoids double-bind).
-	b.server.Config().DatagramPort = 0
-
-	// Use a channel to detect early startup failure
-	startErrCh := make(chan error, 1)
-
-	// Start the server in a goroutine
-	go func() {
-		var err error
-		if b.config.Listener != nil {
-			// Use custom listener
-			err = b.server.Serve(b.config.Listener)
-		} else {
-			// Create listener from address
-			err = b.server.ListenAndServe()
-		}
-
-		// Signal startup failure if it happens immediately
-		select {
-		case startErrCh <- err:
-		default:
-		}
-
-		// Store error and signal done
-		b.mu.Lock()
-		b.err = err
-		b.running.Store(false)
-		b.mu.Unlock()
-
-		close(b.done)
-	}()
-
-	// Brief wait to detect immediate startup failures (e.g., port already in use)
-	select {
-	case err := <-startErrCh:
-		if err != nil {
-			// Clean up UDP listener if it was started
-			if b.udpListener != nil {
-				b.udpListener.Close()
-			}
-			return fmt.Errorf("server failed to start: %w", err)
-		}
-	case <-time.After(100 * time.Millisecond):
-		// No immediate error — listener is accepting connections
+	if err := b.startTCPServer(); err != nil {
+		b.cleanupStartupResources()
+		return err
 	}
 
 	b.running.Store(true)
-
-	// Watch for context cancellation
-	go func() {
-		<-ctx.Done()
-		b.Stop(context.Background())
-	}()
+	b.watchContext(runCtx)
 
 	b.deps.Logger.WithField("addr", b.config.ListenAddr).Info("SAM bridge started")
 
 	return nil
+}
+
+func (b *Bridge) startEmbeddedRouter() error {
+	// Only start embedded router if we created one (port was available during New()).
+	if b.embeddedRouter == nil {
+		return nil
+	}
+
+	if err := b.embeddedRouter.Start(); err != nil {
+		return err
+	}
+
+	timeout := b.config.EmbeddedRouterTimeout
+	if timeout <= 0 {
+		timeout = DefaultEmbeddedRouterTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	for checkPortAvailable(b.config.I2CPAddr) {
+		if time.Now().After(deadline) {
+			return ErrEmbeddedRouterTimeout
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	b.deps.Logger.Info("Embedded router started")
+	return nil
+}
+
+func (b *Bridge) startUDPListener() {
+	if b.udpListener == nil {
+		return
+	}
+
+	if err := b.udpListener.Start(); err != nil {
+		b.deps.Logger.WithError(err).Warn("Failed to start UDP datagram listener")
+		return
+	}
+
+	b.deps.Logger.WithField("addr", b.udpListener.Addr()).Info("UDP datagram listener started")
+}
+
+func (b *Bridge) startTCPServer() error {
+	// Disable the server's own UDP listener since the embedding layer
+	// already manages UDP on the datagram port (avoids double-bind).
+	b.server.Config().DatagramPort = 0
+
+	startErrCh := make(chan error, 1)
+	go b.runServer(startErrCh)
+
+	select {
+	case err := <-startErrCh:
+		if err != nil {
+			return fmt.Errorf("server failed to start: %w", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		// No immediate error — listener is accepting connections.
+	}
+
+	return nil
+}
+
+func (b *Bridge) runServer(startErrCh chan<- error) {
+	var err error
+	if b.config.Listener != nil {
+		err = b.server.Serve(b.config.Listener)
+	} else {
+		err = b.server.ListenAndServe()
+	}
+
+	select {
+	case startErrCh <- err:
+	default:
+	}
+
+	b.mu.Lock()
+	b.err = err
+	b.running.Store(false)
+	b.mu.Unlock()
+
+	close(b.done)
+}
+
+func (b *Bridge) cleanupStartupResources() {
+	if b.udpListener != nil {
+		_ = b.udpListener.Close()
+	}
+}
+
+func (b *Bridge) watchContext(ctx context.Context) {
+	go func() {
+		<-ctx.Done()
+		b.Stop(context.Background())
+	}()
 }
 
 // Stop gracefully shuts down the bridge.

@@ -564,7 +564,7 @@ func TestNamingHandler_HandleOptionsTrue(t *testing.T) {
 					"OPTIONS": "false",
 				},
 			},
-			wantResult: protocol.ResultKeyNotFound, // standard lookup, not implemented
+			wantResult: protocol.ResultI2PError, // standard lookup requires resolver
 			wantName:   "example.i2p",
 		},
 		{
@@ -576,7 +576,7 @@ func TestNamingHandler_HandleOptionsTrue(t *testing.T) {
 					"NAME": "example.i2p",
 				},
 			},
-			wantResult: protocol.ResultKeyNotFound, // standard lookup, not implemented
+			wantResult: protocol.ResultI2PError, // standard lookup requires resolver
 			wantName:   "example.i2p",
 		},
 	}
@@ -847,6 +847,36 @@ func TestNamingHandler_SetResolveTimeout(t *testing.T) {
 	}
 }
 
+func TestNamingLookup(t *testing.T) {
+	t.Run("returns I2P_ERROR when resolver is unavailable", func(t *testing.T) {
+		handler := NewNamingHandler(&mockManager{})
+		ctx := NewContext(&mockConn{}, nil)
+		cmd := &protocol.Command{
+			Verb:   "NAMING",
+			Action: "LOOKUP",
+			Options: map[string]string{
+				"NAME": "example.i2p",
+			},
+		}
+
+		resp, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("Handle() error = %v", err)
+		}
+		if resp == nil {
+			t.Fatal("Handle() returned nil response")
+		}
+
+		respStr := resp.String()
+		if !strings.Contains(respStr, "RESULT=I2P_ERROR") {
+			t.Errorf("Handle() = %q, want RESULT=I2P_ERROR", respStr)
+		}
+		if !strings.Contains(respStr, "MESSAGE=") {
+			t.Errorf("Handle() = %q, want MESSAGE", respStr)
+		}
+	})
+}
+
 func TestNamingHandler_B32LookupWithResolver(t *testing.T) {
 	destB64 := strings.Repeat("B", 516) // Valid base64 destination
 
@@ -862,7 +892,7 @@ func TestNamingHandler_B32LookupWithResolver(t *testing.T) {
 			name:       "no resolver configured",
 			resolver:   nil,
 			b32Address: "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv.b32.i2p",
-			wantResult: protocol.ResultKeyNotFound,
+			wantResult: protocol.ResultI2PError,
 		},
 		{
 			name: "resolver returns destination",
@@ -947,7 +977,7 @@ func TestNamingHandler_HostnameLookupWithResolver(t *testing.T) {
 			name:       "no resolver configured",
 			resolver:   nil,
 			hostname:   "example.i2p",
-			wantResult: protocol.ResultKeyNotFound,
+			wantResult: protocol.ResultI2PError,
 		},
 		{
 			name: "resolver returns destination",

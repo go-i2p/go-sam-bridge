@@ -43,7 +43,7 @@ type DatagramSessionImpl struct {
 
 	// datagramConn is the go-datagrams connection for sending datagrams.
 	// This wraps an I2CP session and handles protocol-specific envelope formatting.
-	datagramConn *datagrams.DatagramConn
+	datagramConn datagramSender
 
 	// Context for cancellation
 	ctx    context.Context
@@ -51,6 +51,12 @@ type DatagramSessionImpl struct {
 
 	// receiveWg waits for receive goroutines to complete
 	receiveWg sync.WaitGroup
+}
+
+type datagramSender interface {
+	SendTo(payload []byte, destinationB64 string, port uint16) error
+	SendToWithOptions(payload []byte, destinationB64 string, port uint16, options *datagrams.Options) error
+	Close() error
 }
 
 // NewDatagramSession creates a new DATAGRAM session for repliable datagrams.
@@ -136,6 +142,8 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 	// Determine destination port (use ToPort if specified, otherwise 0)
 	toPort := uint16(opts.ToPort)
 
+	// NOTE: Option semantics are implemented by go-datagrams. This layer only
+	// forwards the SAM 3.3 option mapping as provided by the client.
 	// Forward SAM 3.3 options to go-datagrams when specified
 	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
 		dgOpts := datagrams.EmptyOptions()
@@ -300,11 +308,22 @@ func (d *DatagramSessionImpl) SetDatagramConn(conn *datagrams.DatagramConn) {
 	d.datagramConn = conn
 }
 
+// setDatagramConnForTest injects a datagram sender for unit tests.
+// It is intentionally unexported to keep public API surface unchanged.
+func (d *DatagramSessionImpl) setDatagramConnForTest(conn datagramSender) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.datagramConn = conn
+}
+
 // DatagramConn returns the go-datagrams connection, or nil if not configured.
 func (d *DatagramSessionImpl) DatagramConn() *datagrams.DatagramConn {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return d.datagramConn
+	if conn, ok := d.datagramConn.(*datagrams.DatagramConn); ok {
+		return conn
+	}
+	return nil
 }
 
 // Close terminates the session and releases all resources.
