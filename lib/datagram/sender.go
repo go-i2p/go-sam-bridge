@@ -132,9 +132,9 @@ func NewI2CPDatagramSender(conn DatagramConnection) *I2CPDatagramSender {
 	}
 }
 
-// SendDatagram implements DatagramSender.SendDatagram.
-// Sends a repliable datagram via go-datagrams.
-func (s *I2CPDatagramSender) SendDatagram(dest string, payload []byte, opts DatagramSendOptions) error {
+// sendWithOpts is the shared core for SendDatagram and SendRaw.
+// It handles connection check, options building, and sending.
+func (s *I2CPDatagramSender) sendWithOpts(dest string, payload []byte, toPort int, sendTags, tagThreshold, expires int, sendLeaseSet *bool) error {
 	s.mu.RLock()
 	conn := s.conn
 	s.mu.RUnlock()
@@ -144,46 +144,31 @@ func (s *I2CPDatagramSender) SendDatagram(dest string, payload []byte, opts Data
 	}
 
 	// Check if we need to use options (SAM 3.3+)
-	if opts.SendTags > 0 || opts.TagThreshold > 0 || opts.Expires > 0 || opts.SendLeaseSet != nil {
+	if sendTags > 0 || tagThreshold > 0 || expires > 0 || sendLeaseSet != nil {
 		i2pOpts := &I2PDatagramOptions{
-			SendTags:     opts.SendTags,
-			TagThreshold: opts.TagThreshold,
-			Expires:      opts.Expires,
+			SendTags:     sendTags,
+			TagThreshold: tagThreshold,
+			Expires:      expires,
 		}
-		if opts.SendLeaseSet != nil {
-			i2pOpts.SendLeaseSet = *opts.SendLeaseSet
+		if sendLeaseSet != nil {
+			i2pOpts.SendLeaseSet = *sendLeaseSet
 		}
-		return conn.SendToWithOptions(payload, dest, uint16(opts.ToPort), i2pOpts)
+		return conn.SendToWithOptions(payload, dest, uint16(toPort), i2pOpts)
 	}
 
-	return conn.SendTo(payload, dest, uint16(opts.ToPort))
+	return conn.SendTo(payload, dest, uint16(toPort))
+}
+
+// SendDatagram implements DatagramSender.SendDatagram.
+// Sends a repliable datagram via go-datagrams.
+func (s *I2CPDatagramSender) SendDatagram(dest string, payload []byte, opts DatagramSendOptions) error {
+	return s.sendWithOpts(dest, payload, opts.ToPort, opts.SendTags, opts.TagThreshold, opts.Expires, opts.SendLeaseSet)
 }
 
 // SendRaw implements DatagramSender.SendRaw.
 // Sends a raw datagram via go-datagrams.
 func (s *I2CPDatagramSender) SendRaw(dest string, payload []byte, opts RawSendOptions) error {
-	s.mu.RLock()
-	conn := s.conn
-	s.mu.RUnlock()
-
-	if conn == nil {
-		return fmt.Errorf("datagram connection not available")
-	}
-
-	// Check if we need to use options (SAM 3.3+)
-	if opts.SendTags > 0 || opts.TagThreshold > 0 || opts.Expires > 0 || opts.SendLeaseSet != nil {
-		i2pOpts := &I2PDatagramOptions{
-			SendTags:     opts.SendTags,
-			TagThreshold: opts.TagThreshold,
-			Expires:      opts.Expires,
-		}
-		if opts.SendLeaseSet != nil {
-			i2pOpts.SendLeaseSet = *opts.SendLeaseSet
-		}
-		return conn.SendToWithOptions(payload, dest, uint16(opts.ToPort), i2pOpts)
-	}
-
-	return conn.SendTo(payload, dest, uint16(opts.ToPort))
+	return s.sendWithOpts(dest, payload, opts.ToPort, opts.SendTags, opts.TagThreshold, opts.Expires, opts.SendLeaseSet)
 }
 
 // Close implements DatagramSender.Close.
