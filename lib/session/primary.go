@@ -188,21 +188,24 @@ func (p *PrimarySessionImpl) validateSubsessionRouting(opts SubsessionOptions) (
 }
 
 // createSubsession creates the appropriate session type for the subsession.
+// Subsessions do not own the SAM control connection — that belongs exclusively
+// to the PrimarySessionImpl. Passing nil prevents subsession.Close() from
+// closing the shared TCP socket and destroying sibling subsessions.
 func (p *PrimarySessionImpl) createSubsession(id string, style Style, opts SubsessionOptions) (Session, error) {
 	cfg := p.createSubsessionConfig(opts)
 
 	var sess Session
 	switch style {
 	case StyleStream:
-		sess = NewStreamSession(id, p.Destination(), p.ControlConn(), cfg, nil, nil)
+		sess = NewStreamSession(id, p.Destination(), nil, cfg, nil, nil)
 	case StyleDatagram:
-		sess = NewDatagramSession(id, p.Destination(), p.ControlConn(), cfg)
+		sess = NewDatagramSession(id, p.Destination(), nil, cfg)
 	case StyleDatagram2:
-		sess = NewDatagram2Session(id, p.Destination(), p.ControlConn(), cfg)
+		sess = NewDatagram2Session(id, p.Destination(), nil, cfg)
 	case StyleDatagram3:
-		sess = NewDatagram3Session(id, p.Destination(), p.ControlConn(), cfg)
+		sess = NewDatagram3Session(id, p.Destination(), nil, cfg)
 	case StyleRaw:
-		sess = NewRawSession(id, p.Destination(), p.ControlConn(), cfg)
+		sess = NewRawSession(id, p.Destination(), nil, cfg)
 	default:
 		return nil, ErrInvalidSubsessionStyle
 	}

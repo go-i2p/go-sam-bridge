@@ -331,6 +331,8 @@ func (s *StreamSessionImpl) acceptWithTimeout(listener net.Listener, timeout tim
 }
 
 // acceptWithTimeoutImpl handles timeout-based accept using channels.
+// If the timeout or context fires before Accept completes, a cleanup goroutine
+// drains the channel and closes the late-arriving connection to prevent leaks.
 func (s *StreamSessionImpl) acceptWithTimeoutImpl(listener net.Listener, timeout time.Duration) (net.Conn, error) {
 	type acceptResult struct {
 		conn net.Conn
@@ -350,8 +352,18 @@ func (s *StreamSessionImpl) acceptWithTimeoutImpl(listener net.Listener, timeout
 		}
 		return result.conn, nil
 	case <-time.After(timeout):
+		go func() {
+			if r := <-done; r.conn != nil {
+				r.conn.Close()
+			}
+		}()
 		return nil, errors.New("accept timeout")
 	case <-s.ctx.Done():
+		go func() {
+			if r := <-done; r.conn != nil {
+				r.conn.Close()
+			}
+		}()
 		return nil, s.ctx.Err()
 	}
 }

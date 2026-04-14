@@ -51,6 +51,9 @@ type DatagramSessionImpl struct {
 
 	// receiveWg waits for receive goroutines to complete
 	receiveWg sync.WaitGroup
+
+	// closeOnce ensures Close() cleanup runs exactly once even under concurrent calls.
+	closeOnce sync.Once
 }
 
 type datagramSender interface {
@@ -307,7 +310,7 @@ func (d *DatagramSessionImpl) DatagramConn() *datagrams.DatagramConn {
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform DATAGRAM-specific cleanup.
 func (d *DatagramSessionImpl) Close() error {
-	return closeDGResources(&d.mu, d.Status, d.cancel, &d.receiveWg, func() {
+	return closeDGResources(&d.closeOnce, &d.mu, d.cancel, &d.receiveWg, func() {
 		if d.receiveChan != nil {
 			close(d.receiveChan)
 			d.receiveChan = nil

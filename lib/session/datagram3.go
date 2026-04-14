@@ -69,6 +69,9 @@ type Datagram3SessionImpl struct {
 
 	// receiveWg waits for receive goroutines to complete
 	receiveWg sync.WaitGroup
+
+	// closeOnce ensures Close() cleanup runs exactly once even under concurrent calls.
+	closeOnce sync.Once
 }
 
 // MaxDatagram3Size is the maximum payload size for DATAGRAM3.
@@ -246,38 +249,35 @@ func (d *Datagram3SessionImpl) DeliverDatagram(dg ReceivedDatagram) bool {
 }
 
 // Close terminates the session and releases all resources.
-// Safe to call multiple times.
+// Safe to call multiple times; concurrent calls are serialised by closeOnce.
+// The mutex is released before receiveWg.Wait() to prevent deadlock with
+// goroutines (e.g. DeliverDatagram) that also need the mutex.
 func (d *Datagram3SessionImpl) Close() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	var closeErr error
+	d.closeOnce.Do(func() {
+		// Cancel context to stop background goroutines
+		d.cancel()
 
-	if d.Status() == StatusClosed {
-		return nil
-	}
+		// Perform cleanup under the lock before waiting for goroutines
+		d.mu.Lock()
+		if d.udpConn != nil {
+			d.udpConn.Close()
+			d.udpConn = nil
+		}
+		if d.datagramConn != nil {
+			d.datagramConn.Close()
+			d.datagramConn = nil
+		}
+		close(d.receiveChan)
+		d.mu.Unlock()
 
-	// Cancel context to stop background goroutines
-	d.cancel()
+		// Wait for goroutines after releasing the lock to prevent deadlock
+		d.receiveWg.Wait()
 
-	// Close UDP connection if open
-	if d.udpConn != nil {
-		d.udpConn.Close()
-		d.udpConn = nil
-	}
-
-	// Close datagram connection if we own it
-	if d.datagramConn != nil {
-		d.datagramConn.Close()
-		d.datagramConn = nil
-	}
-
-	// Close receive channel
-	close(d.receiveChan)
-
-	// Wait for goroutines to finish
-	d.receiveWg.Wait()
-
-	// Close base session
-	return d.BaseSession.Close()
+		// Close base session
+		closeErr = d.BaseSession.Close()
+	})
+	return closeErr
 }
 
 // SetDatagramConn sets the go-datagrams connection for sending datagrams.

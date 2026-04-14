@@ -59,6 +59,9 @@ type RawSessionImpl struct {
 
 	// receiveWg waits for receive goroutines to complete
 	receiveWg sync.WaitGroup
+
+	// closeOnce ensures Close() cleanup runs exactly once even under concurrent calls.
+	closeOnce sync.Once
 }
 
 // NewRawSession creates a new RAW session for anonymous datagrams.
@@ -338,7 +341,7 @@ func (r *RawSessionImpl) DatagramConn() *datagrams.DatagramConn {
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform RAW-specific cleanup.
 func (r *RawSessionImpl) Close() error {
-	return closeDGResources(&r.mu, r.Status, r.cancel, &r.receiveWg, func() {
+	return closeDGResources(&r.closeOnce, &r.mu, r.cancel, &r.receiveWg, func() {
 		if r.receiveChan != nil {
 			close(r.receiveChan)
 			r.receiveChan = nil

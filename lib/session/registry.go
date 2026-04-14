@@ -52,6 +52,13 @@ type RegistryImpl struct {
 	// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
 	// DATAGRAM- or RAW-style session, as appropriate."
 	mostRecentByStyle map[Style]string // style -> session id
+
+	// registrationSeq is a monotonic counter incremented on each Register call.
+	// sessionSeq maps session id to the sequence number at registration time,
+	// enabling the registry to find the next most-recently-registered session
+	// when the current most-recent is unregistered.
+	registrationSeq uint64
+	sessionSeq      map[string]uint64 // id -> registration sequence number
 }
 
 // NewRegistry creates a new session registry.
@@ -60,6 +67,7 @@ func NewRegistry() *RegistryImpl {
 		sessions:          make(map[string]Session),
 		dests:             make(map[string]string),
 		mostRecentByStyle: make(map[Style]string),
+		sessionSeq:        make(map[string]uint64),
 	}
 }
 
@@ -98,6 +106,10 @@ func (r *RegistryImpl) Register(s Session) error {
 
 	r.sessions[id] = s
 
+	// Assign a registration sequence number for ordering.
+	r.registrationSeq++
+	r.sessionSeq[id] = r.registrationSeq
+
 	// Track most recently created session by style for V1/V2 DATAGRAM/RAW commands.
 	// Per SAMv3.md: "DATAGRAM SEND/RAW SEND sends to the most recently created
 	// DATAGRAM- or RAW-style session, as appropriate."
@@ -128,12 +140,32 @@ func (r *RegistryImpl) Unregister(id string) error {
 		}
 	}
 
-	// Clean up most recent tracking if this was the most recent for its style
+	// Clean up most recent tracking if this was the most recent for its style.
+	// When removing the most-recent entry, find the next candidate by scanning
+	// remaining sessions of the same style and selecting the one registered most
+	// recently (highest sequence number), preserving SAMv3.md semantics.
 	style := s.Style()
 	if r.mostRecentByStyle[style] == id {
 		delete(r.mostRecentByStyle, style)
+		var bestSeq uint64
+		var bestID string
+		for sid, sess := range r.sessions {
+			if sid == id {
+				continue // skip the session being removed
+			}
+			if sess.Style() == style {
+				if seq := r.sessionSeq[sid]; seq > bestSeq {
+					bestSeq = seq
+					bestID = sid
+				}
+			}
+		}
+		if bestID != "" {
+			r.mostRecentByStyle[style] = bestID
+		}
 	}
 
+	delete(r.sessionSeq, id)
 	delete(r.sessions, id)
 	return nil
 }

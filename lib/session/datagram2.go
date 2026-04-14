@@ -55,6 +55,9 @@ type Datagram2SessionImpl struct {
 	// receiveWg waits for receive goroutines to complete
 	receiveWg sync.WaitGroup
 
+	// closeOnce ensures Close() cleanup runs exactly once even under concurrent calls.
+	closeOnce sync.Once
+
 	// Replay protection: track seen nonces to prevent replay attacks
 	// Map of nonce -> expiration time for cleanup
 	seenNonces   map[uint64]time.Time
@@ -257,43 +260,38 @@ func (d *Datagram2SessionImpl) DeliverDatagram(dg ReceivedDatagram, nonce uint64
 }
 
 // Close terminates the session and releases all resources.
-// Safe to call multiple times.
+// Safe to call multiple times; concurrent calls are serialised by closeOnce.
+// The mutex is released before receiveWg.Wait() to prevent deadlock with
+// goroutines (e.g. DeliverDatagram) that also need the mutex.
 func (d *Datagram2SessionImpl) Close() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	var closeErr error
+	d.closeOnce.Do(func() {
+		// Cancel context to stop background goroutines
+		d.cancel()
 
-	if d.Status() == StatusClosed {
-		return nil
-	}
+		// Perform cleanup under the lock before waiting for goroutines
+		d.mu.Lock()
+		if d.cleanupTimer != nil {
+			d.cleanupTimer.Stop()
+		}
+		if d.udpConn != nil {
+			d.udpConn.Close()
+			d.udpConn = nil
+		}
+		if d.datagramConn != nil {
+			d.datagramConn.Close()
+			d.datagramConn = nil
+		}
+		close(d.receiveChan)
+		d.mu.Unlock()
 
-	// Cancel context to stop background goroutines
-	d.cancel()
+		// Wait for goroutines after releasing the lock to prevent deadlock
+		d.receiveWg.Wait()
 
-	// Stop cleanup timer
-	if d.cleanupTimer != nil {
-		d.cleanupTimer.Stop()
-	}
-
-	// Close UDP connection if open
-	if d.udpConn != nil {
-		d.udpConn.Close()
-		d.udpConn = nil
-	}
-
-	// Close datagram connection if we own it
-	if d.datagramConn != nil {
-		d.datagramConn.Close()
-		d.datagramConn = nil
-	}
-
-	// Close receive channel
-	close(d.receiveChan)
-
-	// Wait for goroutines to finish
-	d.receiveWg.Wait()
-
-	// Close base session
-	return d.BaseSession.Close()
+		// Close base session
+		closeErr = d.BaseSession.Close()
+	})
+	return closeErr
 }
 
 // SetDatagramConn sets the go-datagrams connection for sending datagrams.

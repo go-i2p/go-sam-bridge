@@ -172,10 +172,13 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to I2P router at %s: %w", c.config.RouterAddr, err)
 	}
 
-	// Start the I2CP message processing loop in a background goroutine
+	// Start the I2CP message processing loop in a background goroutine.
+	// If ProcessIO returns an error it means the router connection dropped;
+	// invoke onDisconnect so callers can react (e.g. reconnect, surface error).
 	go func() {
-		// ProcessIO takes a context; use background since connection is already established
-		_ = i2cpClient.ProcessIO(context.Background())
+		if err := i2cpClient.ProcessIO(context.Background()); err != nil {
+			c.onDisconnect(i2cpClient, err.Error(), nil)
+		}
 	}()
 
 	c.i2cpClient = i2cpClient

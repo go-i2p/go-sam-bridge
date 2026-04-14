@@ -133,30 +133,29 @@ func (o sam33Options) buildSAM33Options() *datagrams.Options {
 }
 
 // closeDGResources performs the shared close sequence for DATAGRAM and RAW sessions.
-// It checks status, cancels the context, waits for goroutines, calls cleanupFn under
-// the write lock to release session-specific resources, then closes the base session.
+// It uses closeOnce to guarantee the cleanup body runs exactly once, preventing the
+// double channel-close panic that would occur if two goroutines race to call Close.
+// cancel() stops background goroutines, wg.Wait() drains them, cleanupFn() releases
+// session-specific resources under the write lock, then base.Close() tears down the
+// base session.
 func closeDGResources(
+	closeOnce *sync.Once,
 	mu *sync.RWMutex,
-	statusFn func() Status,
 	cancel context.CancelFunc,
 	wg *sync.WaitGroup,
 	cleanupFn func(),
 	base *BaseSession,
 ) error {
-	mu.Lock()
-	status := statusFn()
-	if status == StatusClosed || status == StatusClosing {
+	var closeErr error
+	closeOnce.Do(func() {
+		cancel()
+		wg.Wait()
+
+		mu.Lock()
+		cleanupFn()
 		mu.Unlock()
-		return nil
-	}
-	mu.Unlock()
 
-	cancel()
-	wg.Wait()
-
-	mu.Lock()
-	cleanupFn()
-	mu.Unlock()
-
-	return base.Close()
+		closeErr = base.Close()
+	})
+	return closeErr
 }
