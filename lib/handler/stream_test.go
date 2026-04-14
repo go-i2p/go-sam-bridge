@@ -824,50 +824,6 @@ func TestParseBool(t *testing.T) {
 	}
 }
 
-func TestParseInt(t *testing.T) {
-	tests := []struct {
-		input      string
-		defaultVal int
-		want       int
-	}{
-		{"", 0, 0},
-		{"", 42, 42},
-		{"123", 0, 123},
-		{"-1", 0, -1},
-		{"invalid", 99, 99},
-	}
-
-	for _, tt := range tests {
-		got := parseInt(tt.input, tt.defaultVal)
-		if got != tt.want {
-			t.Errorf("parseInt(%q, %d) = %d, want %d", tt.input, tt.defaultVal, got, tt.want)
-		}
-	}
-}
-
-func TestIsValidPort(t *testing.T) {
-	tests := []struct {
-		port int
-		want bool
-	}{
-		{0, true},
-		{1, true},
-		{80, true},
-		{443, true},
-		{65535, true},
-		{-1, false},
-		{65536, false},
-		{99999, false},
-	}
-
-	for _, tt := range tests {
-		got := isValidPort(tt.port)
-		if got != tt.want {
-			t.Errorf("isValidPort(%d) = %v, want %v", tt.port, got, tt.want)
-		}
-	}
-}
-
 func TestExtractHost(t *testing.T) {
 	tests := []struct {
 		addr string

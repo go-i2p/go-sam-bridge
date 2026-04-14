@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
@@ -439,23 +438,6 @@ func parseBool(s string, defaultVal bool) bool {
 	default:
 		return defaultVal
 	}
-}
-
-// parseInt parses an integer string with a default value.
-func parseInt(s string, defaultVal int) int {
-	if s == "" {
-		return defaultVal
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil {
-		return defaultVal
-	}
-	return v
-}
-
-// isValidPort checks if a port number is valid (0-65535).
-func isValidPort(port int) bool {
-	return port >= 0 && port <= 65535
 }
 
 // extractHost extracts the host from a host:port string.
