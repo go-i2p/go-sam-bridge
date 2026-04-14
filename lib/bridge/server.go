@@ -171,14 +171,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 	s.connections[c] = struct{}{}
 	s.mu.Unlock()
 
+	var ctx *handler.Context
+
 	defer func() {
 		s.mu.Lock()
 		delete(s.connections, c)
 		s.mu.Unlock()
+		if ctx != nil {
+			ctx.CloseForwardListeners()
+		}
 		c.Close()
 	}()
 
-	ctx := handler.NewContext(conn, s.registry)
+	ctx = handler.NewContext(conn, s.registry)
 
 	// Command loop
 	for {

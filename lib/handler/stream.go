@@ -356,8 +356,9 @@ func (h *StreamHandler) handleForward(ctx *Context, cmd *protocol.Command) (*pro
 		return streamError(err.Error()), nil
 	}
 
-	// FORWARD always returns a response, even with SILENT=true
-	_ = listener
+	// Store the listener so it can be closed when the SAM connection ends,
+	// preventing goroutine and file-descriptor leaks.
+	ctx.AddForwardListener(listener)
 	return streamOK(), nil
 }
 

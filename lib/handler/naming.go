@@ -137,11 +137,12 @@ func (h *NamingHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.R
 		return h.handleOptionsLookup(name)
 	}
 
-	// Standard name resolution without options
-	// Return I2P_ERROR (not KEY_NOT_FOUND) when the resolver is unavailable,
-	// so clients can distinguish "not configured" from "name does not exist".
+	// Standard name resolution without options.
+	// Return KEY_NOT_FOUND (not I2P_ERROR) when the resolver is unavailable for
+	// B32/.i2p names: the name is genuinely unresolvable from this bridge's perspective.
+	// Reserve I2P_ERROR for genuine internal failures (resolver timeout, network error).
 	if h.resolver == nil && (isB32Address(name) || isI2PHostname(name)) {
-		return namingI2PError(name, "Naming lookup requires I2CP connection"), nil
+		return namingKeyNotFound(name), nil
 	}
 	dest, err := h.resolveName(name)
 	if err != nil {
@@ -221,6 +222,12 @@ func (h *NamingHandler) resolveName(name string) (string, error) {
 // Per SAMv3.md: "NAMING LOOKUP does not require that a session has been created first.
 // However, in some implementations, a .b32.i2p lookup which is uncached and requires
 // a network query may fail, as no client tunnels are available."
+//
+// B33 blinded addresses (55+ character base32 prefix, also ending in .b32.i2p) are
+// delegated to the resolver without special handling. Whether go-i2cp correctly strips
+// the extended B33 prefix and extracts the blinding factor has not been verified against
+// a router with encrypted LeaseSets. If resolution fails for B33 names, KEY_NOT_FOUND
+// is returned.
 //
 // Returns KEY_NOT_FOUND if no resolver is configured.
 func (h *NamingHandler) resolveB32(name string) (string, error) {

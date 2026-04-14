@@ -62,6 +62,10 @@ type Context struct {
 
 	// Ctx is the request context for cancellation and timeouts.
 	Ctx context.Context
+
+	// ForwardListeners holds listeners created by STREAM FORWARD.
+	// Closed when the SAM connection is torn down to stop all forwarding loops.
+	ForwardListeners []net.Listener
 }
 
 // NewContext creates a new handler context with the given connection.
@@ -113,6 +117,22 @@ func (c *Context) SetStreamConn(conn net.Conn) {
 // When true, the bridge should start bidirectional data forwarding.
 func (c *Context) HasStreamConn() bool {
 	return c.StreamConn != nil
+}
+
+// AddForwardListener registers a listener created by STREAM FORWARD.
+// All registered listeners are closed by CloseForwardListeners when the
+// SAM connection ends, preventing goroutine and file-descriptor leaks.
+func (c *Context) AddForwardListener(l net.Listener) {
+	c.ForwardListeners = append(c.ForwardListeners, l)
+}
+
+// CloseForwardListeners closes all listeners registered via AddForwardListener.
+// Must be called when the SAM client connection closes.
+func (c *Context) CloseForwardListeners() {
+	for _, l := range c.ForwardListeners {
+		_ = l.Close()
+	}
+	c.ForwardListeners = nil
 }
 
 // StartForwarding starts bidirectional data forwarding between the control

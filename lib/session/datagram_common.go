@@ -108,6 +108,12 @@ func (o sam33Options) hasSAM33Options() bool {
 
 // buildSAM33Options converts SAM 3.3 send options to go-datagrams Options.
 // Returns nil if no SAM 3.3 options are set.
+//
+// NOTE: Whether go-datagrams passes these options to the underlying I2CP
+// SendMessageExpires message type has not been independently verified.
+// The go-datagrams library does not document support for SEND_TAGS, TAG_THRESHOLD,
+// EXPIRES, or SEND_LEASESET. Until verified, these options may be silently ignored
+// by the downstream library even when set here.
 func (o sam33Options) buildSAM33Options() *datagrams.Options {
 	if !o.hasSAM33Options() {
 		return nil

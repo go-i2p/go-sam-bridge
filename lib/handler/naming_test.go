@@ -74,7 +74,7 @@ func TestNamingHandler_Handle(t *testing.T) {
 					"NAME": "example.i2p",
 				},
 			},
-			wantResult: protocol.ResultI2PError, // no resolver configured
+			wantResult: protocol.ResultKeyNotFound, // no resolver configured
 			wantName:   "example.i2p",
 		},
 		{
@@ -86,7 +86,7 @@ func TestNamingHandler_Handle(t *testing.T) {
 					"NAME": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv.b32.i2p",
 				},
 			},
-			wantResult: protocol.ResultI2PError, // no resolver configured
+			wantResult: protocol.ResultKeyNotFound, // no resolver configured
 		},
 	}
 
@@ -577,7 +577,7 @@ func TestNamingHandler_HandleOptionsTrue(t *testing.T) {
 					"OPTIONS": "false",
 				},
 			},
-			wantResult: protocol.ResultI2PError, // standard lookup requires resolver
+			wantResult: protocol.ResultKeyNotFound, // standard lookup requires resolver
 			wantName:   "example.i2p",
 		},
 		{
@@ -589,7 +589,7 @@ func TestNamingHandler_HandleOptionsTrue(t *testing.T) {
 					"NAME": "example.i2p",
 				},
 			},
-			wantResult: protocol.ResultI2PError, // standard lookup requires resolver
+			wantResult: protocol.ResultKeyNotFound, // standard lookup requires resolver
 			wantName:   "example.i2p",
 		},
 	}
@@ -861,7 +861,7 @@ func TestNamingHandler_SetResolveTimeout(t *testing.T) {
 }
 
 func TestNamingLookup(t *testing.T) {
-	t.Run("returns I2P_ERROR when resolver is unavailable", func(t *testing.T) {
+	t.Run("returns KEY_NOT_FOUND when resolver is unavailable", func(t *testing.T) {
 		handler := NewNamingHandler(&mockManager{})
 		ctx := NewContext(&mockConn{}, nil)
 		cmd := &protocol.Command{
@@ -881,11 +881,8 @@ func TestNamingLookup(t *testing.T) {
 		}
 
 		respStr := resp.String()
-		if !strings.Contains(respStr, "RESULT=I2P_ERROR") {
-			t.Errorf("Handle() = %q, want RESULT=I2P_ERROR", respStr)
-		}
-		if !strings.Contains(respStr, "MESSAGE=") {
-			t.Errorf("Handle() = %q, want MESSAGE", respStr)
+		if !strings.Contains(respStr, "RESULT=KEY_NOT_FOUND") {
+			t.Errorf("Handle() = %q, want RESULT=KEY_NOT_FOUND", respStr)
 		}
 	})
 }
@@ -905,7 +902,7 @@ func TestNamingHandler_B32LookupWithResolver(t *testing.T) {
 			name:       "no resolver configured",
 			resolver:   nil,
 			b32Address: "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv.b32.i2p",
-			wantResult: protocol.ResultI2PError,
+			wantResult: protocol.ResultKeyNotFound,
 		},
 		{
 			name: "resolver returns destination",
@@ -990,7 +987,7 @@ func TestNamingHandler_HostnameLookupWithResolver(t *testing.T) {
 			name:       "no resolver configured",
 			resolver:   nil,
 			hostname:   "example.i2p",
-			wantResult: protocol.ResultI2PError,
+			wantResult: protocol.ResultKeyNotFound,
 		},
 		{
 			name: "resolver returns destination",
@@ -1100,7 +1097,7 @@ func TestNamingHandler_Base64DestinationPassthrough(t *testing.T) {
 // TestNamingB33 verifies the current behavior for B33 blinded destination addresses.
 // B33 addresses use an extended base32 prefix (55-60 characters) with blinding parameters.
 // Currently, B33 addresses are treated as regular .b32.i2p and delegated to go-i2cp.
-// Without a resolver, the handler returns I2P_ERROR (not KEY_NOT_FOUND).
+// Without a resolver, the handler returns KEY_NOT_FOUND per SAMv3.md spec.
 func TestNamingB33(t *testing.T) {
 	// Synthetic B33 address: 60-character base32 prefix (longer than standard B32's ~52 chars)
 	b33Addr := "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwxyz23.b32.i2p"
@@ -1121,9 +1118,9 @@ func TestNamingB33(t *testing.T) {
 			t.Fatalf("Handle() error = %v", err)
 		}
 		respStr := resp.String()
-		// B33 treated as .b32.i2p — without resolver, returns I2P_ERROR
-		if !strings.Contains(respStr, "RESULT=I2P_ERROR") {
-			t.Errorf("Handle(%s) = %q, want RESULT=I2P_ERROR", b33Addr, respStr)
+		// B33 treated as .b32.i2p — without resolver, returns KEY_NOT_FOUND per SAMv3.md
+		if !strings.Contains(respStr, "RESULT=KEY_NOT_FOUND") {
+			t.Errorf("Handle(%s) = %q, want RESULT=KEY_NOT_FOUND", b33Addr, respStr)
 		}
 	})
 
