@@ -89,21 +89,22 @@ func TestDestination_Hash(t *testing.T) {
 	t.Run("short public key returns hex encoded", func(t *testing.T) {
 		d := &Destination{PublicKey: []byte("shortkey")}
 		got := d.Hash()
-		// "shortkey" hex encoded = 73686f72746b6579
-		want := "73686f72746b6579"
+		// Hash() returns SHA-256 hex of PublicKey
+		// sha256("shortkey") = f479f0c267ed622d03774c61ff5e2274c1f3d0ef55c0dbf55212c59d33a3e6de
+		want := "f479f0c267ed622d03774c61ff5e2274c1f3d0ef55c0dbf55212c59d33a3e6de"
 		if got != want {
 			t.Errorf("short PublicKey.Hash() = %q, want %q", got, want)
 		}
 	})
 
-	t.Run("long public key truncated to 32 bytes hex encoded", func(t *testing.T) {
+	t.Run("long public key sha256 is 64 hex chars", func(t *testing.T) {
 		longKey := make([]byte, 64)
 		for i := range longKey {
 			longKey[i] = byte(i)
 		}
 		d := &Destination{PublicKey: longKey}
 		got := d.Hash()
-		// 32 bytes hex encoded = 64 characters
+		// SHA-256 produces 32 bytes = 64 hex characters regardless of input length
 		if len(got) != 64 {
 			t.Errorf("long PublicKey.Hash() len = %d, want 64", len(got))
 		}
@@ -119,7 +120,9 @@ func TestDestination_Hash(t *testing.T) {
 		// Test with bytes that are not valid UTF-8 to verify hex encoding works
 		d := &Destination{PublicKey: []byte{0x00, 0xff, 0x80, 0x7f}}
 		got := d.Hash()
-		want := "00ff807f"
+		// Hash() returns SHA-256 hex of PublicKey
+		// sha256([]byte{0x00,0xff,0x80,0x7f}) = 049426b578cc61154a0dffb6e0fe305e12ac496d6e36e0d833d55fffc363fa51
+		want := "049426b578cc61154a0dffb6e0fe305e12ac496d6e36e0d833d55fffc363fa51"
 		if got != want {
 			t.Errorf("binary PublicKey.Hash() = %q, want %q", got, want)
 		}
