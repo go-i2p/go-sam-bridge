@@ -126,21 +126,13 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 		return errors.New("data exceeds maximum datagram size")
 	}
 
-	// Validate ports if specified
-	if opts.FromPort < 0 || opts.FromPort > 65535 {
-		return ErrInvalidPort
-	}
-	if opts.ToPort < 0 || opts.ToPort > 65535 {
-		return ErrInvalidPort
-	}
-
 	// Check if datagramConn is configured
 	if datagramConn == nil {
 		return ErrDatagramSendNotImplemented
 	}
 
 	// Determine destination port (use ToPort if specified, otherwise 0)
-	toPort := uint16(opts.ToPort)
+	toPort := opts.ToPort
 
 	// Forward SAM 3.3 options to go-datagrams when specified
 	sam33 := sam33Options{

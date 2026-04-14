@@ -106,30 +106,6 @@ func TestDatagramSessionImpl_Send(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error for invalid FromPort", func(t *testing.T) {
-		session := NewDatagramSession("test-send-port", nil, nil, nil)
-		session.Activate()
-
-		err := session.Send("test-dest", []byte("test"), DatagramSendOptions{
-			FromPort: -1,
-		})
-		if err != ErrInvalidPort {
-			t.Errorf("expected ErrInvalidPort, got %v", err)
-		}
-	})
-
-	t.Run("returns error for invalid ToPort", func(t *testing.T) {
-		session := NewDatagramSession("test-send-toport", nil, nil, nil)
-		session.Activate()
-
-		err := session.Send("test-dest", []byte("test"), DatagramSendOptions{
-			ToPort: 70000,
-		})
-		if err != ErrInvalidPort {
-			t.Errorf("expected ErrInvalidPort, got %v", err)
-		}
-	})
-
 	t.Run("returns not implemented for valid send", func(t *testing.T) {
 		session := NewDatagramSession("test-send-valid", nil, nil, nil)
 		session.Activate()

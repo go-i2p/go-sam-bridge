@@ -42,8 +42,8 @@ func parseSendRequiredParams(cmd *protocol.Command, maxSize int, errFn invalidKe
 }
 
 // parseSendPortOptions extracts FROM_PORT and TO_PORT from the command (SAM 3.2+).
-func parseSendPortOptions(cmd *protocol.Command, errFn invalidKeyFn) (int, int, *protocol.Response) {
-	var fromPort, toPort int
+func parseSendPortOptions(cmd *protocol.Command, errFn invalidKeyFn) (uint16, uint16, *protocol.Response) {
+	var fromPort, toPort uint16
 	var err error
 
 	if fromPortStr := cmd.Get("FROM_PORT"); fromPortStr != "" {
@@ -101,7 +101,7 @@ func parseSendSAM33Options(cmd *protocol.Command, errFn invalidKeyFn) (*sendSAM3
 }
 
 // parseSendPort validates and parses a port string.
-func parseSendPort(s, name string) (int, error) {
+func parseSendPort(s, name string) (uint16, error) {
 	port, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, fmt.Errorf("%s: invalid port value", name)
@@ -109,7 +109,7 @@ func parseSendPort(s, name string) (int, error) {
 	if port < 0 || port > 65535 {
 		return 0, fmt.Errorf("%s: port must be 0-65535", name)
 	}
-	return port, nil
+	return uint16(port), nil
 }
 
 // parseSendSAM33Int parses a SAM 3.3 integer option with range validation.

@@ -183,12 +183,12 @@ func (r *RawSessionImpl) Send(dest string, data []byte, opts RawSendOptions) err
 		SendLeasesetSet: opts.SendLeasesetSet,
 	}
 	if dgOpts := sam33.buildSAM33Options(); dgOpts != nil {
-		return datagramConn.SendToWithOptions(data, dest, uint16(toPort), dgOpts)
+		return datagramConn.SendToWithOptions(data, dest, toPort, dgOpts)
 	}
 
 	// Send via DatagramConn using SendTo
 	// The DatagramConn handles I2CP protocol framing and destination resolution
-	return datagramConn.SendTo(data, dest, uint16(toPort))
+	return datagramConn.SendTo(data, dest, toPort)
 }
 
 // Receive returns a channel for incoming raw datagrams.

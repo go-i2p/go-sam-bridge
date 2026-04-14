@@ -31,10 +31,10 @@ type DatagramSender interface {
 // These map to SAM 3.0-3.3 datagram options.
 type DatagramSendOptions struct {
 	// FromPort is the source port (SAM 3.2+).
-	FromPort int
+	FromPort uint16
 
 	// ToPort is the destination port (SAM 3.2+).
-	ToPort int
+	ToPort uint16
 
 	// SendTags is the number of session tags to send (SAM 3.3+).
 	SendTags int
@@ -53,10 +53,10 @@ type DatagramSendOptions struct {
 // These map to SAM 3.1-3.3 RAW options.
 type RawSendOptions struct {
 	// FromPort is the source port (SAM 3.2+).
-	FromPort int
+	FromPort uint16
 
 	// ToPort is the destination port (SAM 3.2+).
-	ToPort int
+	ToPort uint16
 
 	// Protocol is the I2CP protocol number (SAM 3.2+).
 	// Default is 18 (ProtocolRaw).
@@ -134,7 +134,7 @@ func NewI2CPDatagramSender(conn DatagramConnection) *I2CPDatagramSender {
 
 // sendWithOpts is the shared core for SendDatagram and SendRaw.
 // It handles connection check, options building, and sending.
-func (s *I2CPDatagramSender) sendWithOpts(dest string, payload []byte, toPort int, sendTags, tagThreshold, expires int, sendLeaseSet *bool) error {
+func (s *I2CPDatagramSender) sendWithOpts(dest string, payload []byte, toPort uint16, sendTags, tagThreshold, expires int, sendLeaseSet *bool) error {
 	s.mu.RLock()
 	conn := s.conn
 	s.mu.RUnlock()
@@ -153,10 +153,10 @@ func (s *I2CPDatagramSender) sendWithOpts(dest string, payload []byte, toPort in
 		if sendLeaseSet != nil {
 			i2pOpts.SendLeaseSet = *sendLeaseSet
 		}
-		return conn.SendToWithOptions(payload, dest, uint16(toPort), i2pOpts)
+		return conn.SendToWithOptions(payload, dest, toPort, i2pOpts)
 	}
 
-	return conn.SendTo(payload, dest, uint16(toPort))
+	return conn.SendTo(payload, dest, toPort)
 }
 
 // SendDatagram implements DatagramSender.SendDatagram.

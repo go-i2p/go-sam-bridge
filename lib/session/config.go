@@ -231,9 +231,9 @@ type ForwardOptions struct {
 // See SAMv3.md DATAGRAM SEND command for details.
 type DatagramSendOptions struct {
 	// FromPort overrides session default source port (SAM 3.2+).
-	FromPort int
+	FromPort uint16
 	// ToPort overrides session default destination port (SAM 3.2+).
-	ToPort int
+	ToPort uint16
 
 	// SAM 3.3 options - passed to I2CP SendMessageExpires
 
@@ -265,9 +265,9 @@ type DatagramSendOptions struct {
 // See SAMv3.md RAW SEND command for details.
 type RawSendOptions struct {
 	// FromPort overrides session default source port (SAM 3.2+).
-	FromPort int
+	FromPort uint16
 	// ToPort overrides session default destination port (SAM 3.2+).
-	ToPort int
+	ToPort uint16
 	// Protocol overrides session default I2CP protocol (SAM 3.2+).
 	Protocol int
 

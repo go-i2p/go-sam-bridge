@@ -649,7 +649,7 @@ func TestParseSendPort_Datagram(t *testing.T) {
 	tests := []struct {
 		input   string
 		name    string
-		want    int
+		want    uint16
 		wantErr bool
 	}{
 		{"0", "PORT", 0, false},

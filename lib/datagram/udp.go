@@ -244,8 +244,8 @@ func (l *UDPListener) routeToRawSession(sess session.Session, header *DatagramHe
 
 	// Build send options from header
 	opts := session.RawSendOptions{
-		FromPort: header.FromPort,
-		ToPort:   header.ToPort,
+		FromPort: uint16(header.FromPort),
+		ToPort:   uint16(header.ToPort),
 		Protocol: header.Protocol,
 	}
 
@@ -267,8 +267,8 @@ func (l *UDPListener) routeToDatagramSession(sess session.Session, header *Datag
 
 	// Build send options from header including SAM 3.3 options
 	opts := session.DatagramSendOptions{
-		FromPort:     header.FromPort,
-		ToPort:       header.ToPort,
+		FromPort:     uint16(header.FromPort),
+		ToPort:       uint16(header.ToPort),
 		SendTags:     header.SendTags,
 		TagThreshold: header.TagThreshold,
 		Expires:      header.Expires,

@@ -156,7 +156,7 @@ func (h *DatagramHandler) lookupDatagramSession(ctx *Context) (session.DatagramS
 }
 
 // buildDatagramSendOptions constructs DatagramSendOptions from parsed parameters.
-func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort int, sam33 *sendSAM33Options) session.DatagramSendOptions {
+func (h *DatagramHandler) buildDatagramSendOptions(fromPort, toPort uint16, sam33 *sendSAM33Options) session.DatagramSendOptions {
 	return session.DatagramSendOptions{
 		FromPort:        fromPort,
 		ToPort:          toPort,

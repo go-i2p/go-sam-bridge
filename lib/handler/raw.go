@@ -160,7 +160,7 @@ func (h *RawHandler) parseProtocolOption(cmd *protocol.Command, defaultProtocol 
 }
 
 // buildSendOptions constructs RawSendOptions from parsed parameters.
-func (h *RawHandler) buildSendOptions(fromPort, toPort, protocolNum int, sam33 *sendSAM33Options) session.RawSendOptions {
+func (h *RawHandler) buildSendOptions(fromPort, toPort uint16, protocolNum int, sam33 *sendSAM33Options) session.RawSendOptions {
 	return session.RawSendOptions{
 		FromPort:        fromPort,
 		ToPort:          toPort,
