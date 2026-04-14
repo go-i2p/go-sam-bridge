@@ -357,13 +357,10 @@ func (r *RawSessionImpl) Close() error {
 	}, r.BaseSession)
 }
 
-// formatPort converts port number to string.
+// formatPort converts a port number to its decimal string representation.
+// Uses the local itoa helper to avoid importing strconv.
 func formatPort(port int) string {
-	return string(rune('0'+port/10000)) +
-		string(rune('0'+(port/1000)%10)) +
-		string(rune('0'+(port/100)%10)) +
-		string(rune('0'+(port/10)%10)) +
-		string(rune('0'+port%10))
+	return itoa(port)
 }
 
 // formatRawHeader creates the header line for forwarded raw datagrams.

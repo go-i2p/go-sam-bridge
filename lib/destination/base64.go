@@ -36,14 +36,15 @@ func Base64DecodeString(s string) ([]byte, error) {
 // Replaces + with - and / with ~.
 func StdToI2PBase64(s string) string {
 	result := make([]byte, len(s))
-	for i, c := range s {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		switch c {
 		case '+':
 			result[i] = '-'
 		case '/':
 			result[i] = '~'
 		default:
-			result[i] = byte(c)
+			result[i] = c
 		}
 	}
 	return string(result)
@@ -53,14 +54,15 @@ func StdToI2PBase64(s string) string {
 // Replaces - with + and ~ with /.
 func I2PToStdBase64(s string) string {
 	result := make([]byte, len(s))
-	for i, c := range s {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		switch c {
 		case '-':
 			result[i] = '+'
 		case '~':
 			result[i] = '/'
 		default:
-			result[i] = byte(c)
+			result[i] = c
 		}
 	}
 	return string(result)

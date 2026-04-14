@@ -38,6 +38,7 @@ var DefaultEncryptionTypes = []int{EncTypeECIES_X25519, EncTypeElGamal}
 // OfflineSignature represents offline signing capability per SAM 3.3.
 // This allows a session to use a transient signing key while keeping
 // the long-term identity key offline for security.
+// See also: destination.ParsedOfflineSignature (parsed form) and session.OfflineSignature (session config type).
 type OfflineSignature struct {
 	// Expires is the time when the offline signature expires.
 	Expires time.Time

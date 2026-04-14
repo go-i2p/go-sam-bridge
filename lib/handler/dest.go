@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/go-i2p/go-sam-bridge/lib/destination"
@@ -51,6 +52,12 @@ func (h *DestHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.Res
 	// Generate the destination
 	dest, privateKey, err := h.manager.Generate(sigType)
 	if err != nil {
+		// Return INVALID_KEY (not I2P_ERROR) when the signature type is recognised but
+		// not yet implemented, so SAM clients can distinguish "not supported" from a
+		// genuine router-side failure.
+		if errors.Is(err, destination.ErrUnsupportedSignatureType) {
+			return destInvalidKey("SIGNATURE_TYPE=" + strconv.Itoa(sigType) + " not supported; use SIGNATURE_TYPE=7"), nil
+		}
 		return destError("key generation failed: " + err.Error()), nil
 	}
 
@@ -208,6 +215,15 @@ func destError(msg string) *protocol.Response {
 	return protocol.NewResponse(protocol.VerbDest).
 		WithAction(protocol.ActionReply).
 		WithResult(protocol.ResultI2PError).
+		WithMessage(msg)
+}
+
+// destInvalidKey returns an INVALID_KEY response with a message.
+// Used when the signature type is valid but not yet implemented.
+func destInvalidKey(msg string) *protocol.Response {
+	return protocol.NewResponse(protocol.VerbDest).
+		WithAction(protocol.ActionReply).
+		WithResult(protocol.ResultInvalidKey).
 		WithMessage(msg)
 }
 

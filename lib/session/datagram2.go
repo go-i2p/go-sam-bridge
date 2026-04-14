@@ -263,17 +263,25 @@ func (d *Datagram2SessionImpl) DeliverDatagram(dg ReceivedDatagram, nonce uint64
 // Safe to call multiple times; concurrent calls are serialised by closeOnce.
 // The mutex is released before receiveWg.Wait() to prevent deadlock with
 // goroutines (e.g. DeliverDatagram) that also need the mutex.
+// cleanupTimer is stopped under cleanupMu (not mu) to avoid the data race
+// with cleanupExpiredNonces which also writes cleanupTimer under cleanupMu.
 func (d *Datagram2SessionImpl) Close() error {
 	var closeErr error
 	d.closeOnce.Do(func() {
 		// Cancel context to stop background goroutines
 		d.cancel()
 
-		// Perform cleanup under the lock before waiting for goroutines
-		d.mu.Lock()
+		// Stop the nonce cleanup timer under the same mutex used by
+		// cleanupExpiredNonces, preventing the data race on cleanupTimer.
+		d.cleanupMu.Lock()
 		if d.cleanupTimer != nil {
 			d.cleanupTimer.Stop()
+			d.cleanupTimer = nil
 		}
+		d.cleanupMu.Unlock()
+
+		// Release session-specific resources under mu.
+		d.mu.Lock()
 		if d.udpConn != nil {
 			d.udpConn.Close()
 			d.udpConn = nil
@@ -310,11 +318,14 @@ func (d *Datagram2SessionImpl) DatagramConn() *datagrams.DatagramConn {
 	return d.datagramConn
 }
 
-// startNonceCleanup starts a background goroutine to clean up expired nonces.
+// startNonceCleanup starts a background timer to clean up expired nonces.
+// cleanupTimer is set under cleanupMu to be consistent with cleanupExpiredNonces.
 func (d *Datagram2SessionImpl) startNonceCleanup() {
+	d.cleanupMu.Lock()
 	d.cleanupTimer = time.AfterFunc(d.nonceExpiry/2, func() {
 		d.cleanupExpiredNonces()
 	})
+	d.cleanupMu.Unlock()
 }
 
 // cleanupExpiredNonces removes expired nonces from the tracking map.

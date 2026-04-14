@@ -6,6 +6,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"net"
 )
@@ -153,20 +154,16 @@ func (d *Destination) HasOfflineSignature() bool {
 }
 
 // Hash returns a unique identifier for the destination as a hex-encoded string.
-// Uses the first 32 bytes of the public key encoded as hexadecimal.
-// This provides a consistent, valid string identifier for destination uniqueness checking.
+// Uses SHA-256 of the Base64-encoded public key for a proper cryptographic hash.
+// This provides collision-resistant, deterministic identification for duplicate
+// destination detection in the Registry.
 // Returns empty string for nil or empty destinations.
 func (d *Destination) Hash() string {
 	if d == nil || len(d.PublicKey) == 0 {
 		return ""
 	}
-	// Use hex encoding for reliable string output that's safe for any byte sequence.
-	// Take first 32 bytes (or less if shorter) for a reasonably unique identifier.
-	hashLen := len(d.PublicKey)
-	if hashLen > 32 {
-		hashLen = 32
-	}
-	return hex.EncodeToString(d.PublicKey[:hashLen])
+	sum := sha256.Sum256(d.PublicKey)
+	return hex.EncodeToString(sum[:])
 }
 
 // Session defines the base interface for all SAM session types.

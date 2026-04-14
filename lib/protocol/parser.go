@@ -13,7 +13,13 @@ var (
 	ErrInvalidUTF8       = errors.New("command contains invalid UTF-8")
 	ErrUnterminatedQuote = errors.New("unterminated quoted value")
 	ErrInvalidEscape     = errors.New("invalid escape sequence")
+	ErrCommandTooLong    = errors.New("command exceeds maximum length")
 )
+
+// MaxCommandLength is the maximum allowed length (in bytes) for a SAM command line
+// when using the Parser API directly. The server layer enforces MaxLineLength via
+// Limits.MaxLineLength; this constant protects direct API callers.
+const MaxCommandLength = 65536
 
 // Parser tokenizes SAM protocol commands.
 // Per SAMv3.md, commands follow the format:
@@ -38,8 +44,13 @@ func NewParser() *Parser {
 
 // Parse parses a SAM command line into a Command struct.
 // The input should be a single line without the trailing newline.
+// Returns ErrCommandTooLong if the line exceeds MaxCommandLength bytes.
 func (p *Parser) Parse(line string) (*Command, error) {
 	line = strings.TrimRight(line, "\r\n")
+
+	if len(line) > MaxCommandLength {
+		return nil, ErrCommandTooLong
+	}
 
 	if err := p.validateLine(line); err != nil {
 		return nil, err
@@ -251,10 +262,12 @@ func (p *Parser) isAction(verb, token string) bool {
 	case VerbHello:
 		return t == ActionVersion
 	case VerbSession:
-		return t == ActionCreate || t == ActionAdd || t == ActionRemove
+		return t == ActionCreate || t == ActionAdd || t == ActionRemove || t == ActionList
 	case VerbStream:
 		return t == ActionConnect || t == ActionAccept || t == ActionForward
 	case VerbDatagram, VerbRaw:
+		return t == ActionSend || t == ActionReceived
+	case VerbDatagram2, VerbDatagram3:
 		return t == ActionSend || t == ActionReceived
 	case VerbDest:
 		return t == ActionGenerate || t == ActionReply

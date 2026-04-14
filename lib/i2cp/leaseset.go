@@ -53,48 +53,19 @@ func (a *LeasesetAdapter) SetTimeout(timeout time.Duration) {
 //
 // Current implementation:
 //   - Resolves the destination using go-i2cp's LookupDestination
-//   - Returns an empty options list (leaseset options querying not yet implemented in go-i2cp)
+//   - Returns an error for OPTIONS=true since go-i2cp does not yet implement leaseset
+//     service-record queries; callers receive NAMING REPLY RESULT=I2P_ERROR
 //
 // Future implementation (when go-i2cp supports leaseset queries):
 //   - Query the router for the destination's leaseset
 //   - Parse leaseset options/service records
 //   - Return options with their key-value pairs
 func (a *LeasesetAdapter) LookupWithOptions(name string) (*handler.LeasesetLookupResult, error) {
-	if a.session == nil {
-		return nil, fmt.Errorf("session not available")
-	}
-
-	// Perform destination lookup using go-i2cp (async with sync wrapper)
-	ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
-	defer cancel()
-
-	dest, err := a.session.LookupDestinationSync(ctx, name, a.timeout)
-	if err != nil {
-		// Determine if it's a not-found error or other error
-		// go-i2cp returns an error for not found, so we check the error message
-		return &handler.LeasesetLookupResult{
-			Found: false,
-		}, nil
-	}
-
-	if dest == nil {
-		return &handler.LeasesetLookupResult{
-			Found: false,
-		}, nil
-	}
-
-	// Get the destination as Base64
-	destBase64 := dest.Base64()
-
-	// Return destination with empty options.
-	// go-i2cp does not yet support leaseset options querying, so options
-	// will be empty. When go-i2cp adds leaseset query support, this should
-	// be replaced with option extraction (service records, expiration, etc.).
-	return &handler.LeasesetLookupResult{
-		Destination: destBase64,
-		Options:     nil,
-		Found:       true,
-	}, nil
+	// go-i2cp does not yet support leaseset service-record queries.
+	// Return an error so the NamingHandler emits NAMING REPLY RESULT=I2P_ERROR
+	// MESSAGE="OPTIONS=true not yet supported", which is more honest than returning
+	// an empty options list and silently ignoring the OPTIONS=true request.
+	return nil, fmt.Errorf("OPTIONS=true not yet supported: leaseset service-record queries require go-i2cp support")
 }
 
 // Compile-time check that LeasesetAdapter implements handler.LeasesetLookupProvider.

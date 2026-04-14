@@ -27,7 +27,7 @@ func MapSAMConfigToI2CP(samConfig *session.SessionConfig) *SessionConfig {
 		OutboundLength:         samConfig.OutboundLength,
 		InboundBackupQuantity:  samConfig.InboundBackupQuantity,
 		OutboundBackupQuantity: samConfig.OutboundBackupQuantity,
-		FastReceive:            true, // Always enable for better performance
+		FastReceive:            samConfig.FastReceive,
 	}
 
 	// Map idle handling

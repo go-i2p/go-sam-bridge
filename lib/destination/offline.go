@@ -51,6 +51,7 @@ func isAllZeros(data []byte) bool {
 
 // ParsedOfflineSignature contains the parsed offline signature data.
 // This struct is used during parsing before creating the session config OfflineSignature.
+// See also: destination.OfflineSignature (runtime type) and session.OfflineSignature (session config type).
 type ParsedOfflineSignature struct {
 	// Expires is when the offline signature expires.
 	Expires time.Time

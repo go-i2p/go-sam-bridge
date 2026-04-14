@@ -108,6 +108,7 @@ type SessionConfig struct {
 // OfflineSignature represents offline signing capability per SAM 3.3.
 // This allows a session to use a transient signing key while keeping
 // the long-term identity key offline for security.
+// See also: destination.OfflineSignature (runtime type) and destination.ParsedOfflineSignature (parsed form).
 type OfflineSignature struct {
 	// Expires is the Unix timestamp when the offline signature expires.
 	Expires int64
