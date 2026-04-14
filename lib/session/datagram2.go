@@ -371,6 +371,10 @@ var (
 	// ErrDatagram2SendNotImplemented indicates DATAGRAM2 SEND is not available
 	// because no DatagramConn has been configured. The DatagramConn must be set
 	// via SetDatagramConn() after the I2CP session is established.
+	//
+	// Known limitation: DATAGRAM2 send requires a running I2P/I2CP daemon.
+	// In embedded router mode, the DatagramConn is wired automatically when the
+	// I2CP session becomes available.
 	ErrDatagram2SendNotImplemented = errors.New("DATAGRAM2 SEND not available: DatagramConn not configured")
 
 	// ErrEmptyPayload indicates the datagram payload is empty.

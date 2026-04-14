@@ -285,6 +285,20 @@ func isB32Address(name string) bool {
 	return strings.HasSuffix(lower, ".b32.i2p")
 }
 
+// isB33Address checks if the name is a B33 blinded .b32.i2p address.
+// B33 addresses have a longer base32 prefix (55-60 characters) compared to
+// standard B32 addresses (~52 characters). Both end in .b32.i2p and are
+// delegated to go-i2cp for resolution. This function enables logging and
+// diagnostics for B33 addresses without changing resolution behavior.
+func isB33Address(name string) bool {
+	if !isB32Address(name) {
+		return false
+	}
+	lower := strings.ToLower(name)
+	prefix := strings.TrimSuffix(lower, ".b32.i2p")
+	return len(prefix) >= 55
+}
+
 // isI2PHostname checks if the name is an .i2p hostname (not b32).
 func isI2PHostname(name string) bool {
 	lower := strings.ToLower(name)

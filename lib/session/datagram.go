@@ -351,6 +351,11 @@ const MaxDatagramSize = 31744
 // ErrDatagramSendNotImplemented indicates DATAGRAM SEND is not available
 // because no DatagramConn has been configured. The DatagramConn must be set
 // via SetDatagramConn() after the I2CP session is established.
+//
+// Known limitation: Datagram send requires a running I2P/I2CP daemon.
+// In embedded router mode, the DatagramConn is wired automatically when the
+// I2CP session becomes available. Without I2CP, datagram sessions can be created
+// but send operations will return this error.
 var ErrDatagramSendNotImplemented = errors.New("DATAGRAM SEND not available: DatagramConn not configured")
 
 // Ensure DatagramSessionImpl implements DatagramSession interface.

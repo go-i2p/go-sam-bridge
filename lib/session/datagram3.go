@@ -390,6 +390,10 @@ var (
 	// ErrDatagram3SendNotImplemented indicates DATAGRAM3 SEND is not available
 	// because no DatagramConn has been configured. The DatagramConn must be set
 	// via SetDatagramConn() after the I2CP session is established.
+	//
+	// Known limitation: DATAGRAM3 send requires a running I2P/I2CP daemon.
+	// In embedded router mode, the DatagramConn is wired automatically when the
+	// I2CP session becomes available.
 	ErrDatagram3SendNotImplemented = errors.New("DATAGRAM3 SEND not available: DatagramConn not configured")
 
 	// ErrInvalidHashLength indicates the hash is not the expected 44-byte base64 size.

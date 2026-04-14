@@ -9,6 +9,11 @@ import (
 	"sync"
 )
 
+// SubsessionCreatedCallback is called when a subsession is added to a PRIMARY session.
+// The embedding layer uses this to wire transport (DatagramConn/StreamManager)
+// for each subsession after creation.
+type SubsessionCreatedCallback func(subsession Session, primary *PrimarySessionImpl)
+
 // PrimarySessionImpl implements the PrimarySession interface for PRIMARY/MASTER style.
 // It embeds *BaseSession and provides multiplexed subsession support.
 //
@@ -42,6 +47,10 @@ type PrimarySessionImpl struct {
 	// defaultSubsession is the subsession that receives unmatched traffic
 	// (when LISTEN_PORT=0 and LISTEN_PROTOCOL=0)
 	defaultSubsession string
+
+	// onSubsessionCreated is called after a subsession is added, enabling
+	// the embedding layer to wire transport for the subsession.
+	onSubsessionCreated SubsessionCreatedCallback
 }
 
 // NewPrimarySession creates a new PRIMARY session for multiplexed subsession support.
@@ -72,6 +81,15 @@ func NewPrimarySession(
 		subsessions:  make(map[string]Session),
 		routingTable: make(map[string]string),
 	}
+}
+
+// SetSubsessionCreatedCallback sets the callback invoked after a subsession is added.
+// The embedding layer uses this to wire transport (DatagramConn/StreamManager)
+// for each new subsession.
+func (p *PrimarySessionImpl) SetSubsessionCreatedCallback(cb SubsessionCreatedCallback) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.onSubsessionCreated = cb
 }
 
 // Activate transitions the primary session from Creating to Active status.
@@ -219,6 +237,11 @@ func (p *PrimarySessionImpl) registerSubsession(id string, sess Session, routing
 	// already built and ready (verified by the StatusActive check in validateAddSubsession).
 	if activatable, ok := sess.(interface{ SetStatus(Status) }); ok {
 		activatable.SetStatus(StatusActive)
+	}
+
+	// Notify the embedding layer so it can wire transport for this subsession.
+	if p.onSubsessionCreated != nil {
+		p.onSubsessionCreated(sess, p)
 	}
 }
 

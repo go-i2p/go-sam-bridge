@@ -99,6 +99,7 @@ outbound.quantity=3
 
 ## Limitations
 
+- **DATAGRAM/RAW/DATAGRAM2/DATAGRAM3 send requires I2CP** — Datagram and raw session send operations require a running I2P/I2CP daemon. Sessions can be created without I2CP, but send operations will fail until the DatagramConn is wired via an active I2CP session. In embedded router mode (library API), wiring happens automatically when the router becomes ready.
 - **DEST GENERATE only supports Ed25519 (signature type 7).** Clients requesting other SAM signature types (0–6, 8) will receive an error. This is the recommended signature type for modern I2P usage.
 - **B33 blinded address resolution** is delegated to go-i2cp and has not been verified against a router that supports encrypted LeaseSets.
 - **SAM 3.3 send options** (SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET) are parsed and forwarded to go-datagrams; actual behavioral effect depends on upstream library support.

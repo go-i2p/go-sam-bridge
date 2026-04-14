@@ -1152,3 +1152,46 @@ func TestNamingB33(t *testing.T) {
 		}
 	})
 }
+
+func TestIsB33Address(t *testing.T) {
+	tests := []struct {
+		name   string
+		addr   string
+		wantB3 bool
+	}{
+		{
+			name:   "standard B32 (52 char prefix)",
+			addr:   "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstu.b32.i2p",
+			wantB3: false,
+		},
+		{
+			name:   "B33 (55 char prefix)",
+			addr:   "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.b32.i2p",
+			wantB3: true,
+		},
+		{
+			name:   "B33 (60 char prefix)",
+			addr:   "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwxyz23.b32.i2p",
+			wantB3: true,
+		},
+		{
+			name:   "not b32.i2p at all",
+			addr:   "example.i2p",
+			wantB3: false,
+		},
+		{
+			name:   "short B32 prefix",
+			addr:   "short.b32.i2p",
+			wantB3: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isB33Address(tt.addr)
+			if got != tt.wantB3 {
+				t.Errorf("isB33Address(%q) = %v, want %v", tt.addr, got, tt.wantB3)
+			}
+		})
+	}
+}

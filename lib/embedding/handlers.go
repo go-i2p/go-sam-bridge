@@ -141,6 +141,8 @@ func createStreamManagerCallback(
 			wireStreamManager(deps, i2cpSess, sess.ID(), connector, acceptor, forwarder)
 		case session.StyleDatagram, session.StyleRaw, session.StyleDatagram2, session.StyleDatagram3:
 			wireDatagramConn(deps, i2cpSess, sess)
+		case session.StylePrimary, session.StyleMaster:
+			wirePrimarySession(deps, i2cpSess, sess, connector, acceptor, forwarder)
 		}
 	}
 }
@@ -206,6 +208,36 @@ func wireDatagramConn(deps *Dependencies, i2cpSess *i2cp.I2CPSession, sess sessi
 
 	setter.SetDatagramConn(conn)
 	deps.Logger.WithField("sessionID", sess.ID()).WithField("style", sess.Style()).Debug("Wired DatagramConn for datagram session")
+}
+
+// wirePrimarySession sets up a PRIMARY session by registering a subsession callback
+// that wires transport (StreamManager or DatagramConn) for each subsession as it is added.
+// This enables subsessions to receive and send data using the parent session's I2CP tunnels.
+func wirePrimarySession(
+	deps *Dependencies,
+	i2cpSess *i2cp.I2CPSession,
+	sess session.Session,
+	connector *handler.StreamingConnector,
+	acceptor *handler.StreamingAcceptor,
+	forwarder *handler.StreamingForwarder,
+) {
+	primary, ok := sess.(*session.PrimarySessionImpl)
+	if !ok {
+		deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot wire PRIMARY session: unexpected type")
+		return
+	}
+
+	primary.SetSubsessionCreatedCallback(func(sub session.Session, _ *session.PrimarySessionImpl) {
+		switch sub.Style() {
+		case session.StyleStream:
+			wireStreamManager(deps, i2cpSess, sub.ID(), connector, acceptor, forwarder)
+		case session.StyleDatagram, session.StyleRaw, session.StyleDatagram2, session.StyleDatagram3:
+			wireDatagramConn(deps, i2cpSess, sub)
+		}
+		deps.Logger.WithField("subsessionID", sub.ID()).WithField("style", sub.Style()).Debug("Wired transport for PRIMARY subsession")
+	})
+
+	deps.Logger.WithField("sessionID", sess.ID()).Debug("Wired PRIMARY session with subsession callback")
 }
 
 // datagramProtocolForStyle returns the I2CP protocol number for the given SAM session style.

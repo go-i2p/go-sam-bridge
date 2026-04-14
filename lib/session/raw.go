@@ -425,6 +425,11 @@ const MaxRawDatagramSize = 32768
 
 // ErrRawSendNotImplemented indicates RAW SEND is not available.
 // This error is returned when Send() is called without a DatagramConn configured.
+//
+// Known limitation: RAW send requires a running I2P/I2CP daemon.
+// In embedded router mode, the DatagramConn is wired automatically when the
+// I2CP session becomes available. Without I2CP, RAW sessions can be created
+// but send operations will return this error.
 var ErrRawSendNotImplemented = errors.New("RAW send not available: no DatagramConn configured - call SetDatagramConn()")
 
 // Ensure RawSessionImpl implements RawSession interface.

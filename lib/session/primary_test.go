@@ -565,3 +565,47 @@ func TestPrimarySessionImpl_Activate(t *testing.T) {
 		})
 	}
 }
+
+func TestPrimarySession_SubsessionCreatedCallback(t *testing.T) {
+	primary := NewPrimarySession("test-primary", nil, nil, nil)
+	primary.SetStatus(StatusActive)
+	defer primary.Close()
+
+	var callbackCalls []string
+	primary.SetSubsessionCreatedCallback(func(sub Session, p *PrimarySessionImpl) {
+		callbackCalls = append(callbackCalls, sub.ID())
+		if p != primary {
+			t.Error("callback received wrong primary session")
+		}
+	})
+
+	// Add subsessions and verify callback is called
+	_, err := primary.AddSubsession("sub1", StyleStream, SubsessionOptions{ListenPort: 1000})
+	if err != nil {
+		t.Fatalf("AddSubsession(sub1) error = %v", err)
+	}
+
+	_, err = primary.AddSubsession("sub2", StyleDatagram, SubsessionOptions{ListenPort: 2000})
+	if err != nil {
+		t.Fatalf("AddSubsession(sub2) error = %v", err)
+	}
+
+	if len(callbackCalls) != 2 {
+		t.Fatalf("callback called %d times, want 2", len(callbackCalls))
+	}
+	if callbackCalls[0] != "sub1" || callbackCalls[1] != "sub2" {
+		t.Errorf("callback calls = %v, want [sub1, sub2]", callbackCalls)
+	}
+}
+
+func TestPrimarySession_SubsessionCreatedCallback_NilSafe(t *testing.T) {
+	primary := NewPrimarySession("test-primary", nil, nil, nil)
+	primary.SetStatus(StatusActive)
+	defer primary.Close()
+
+	// No callback set — should not panic
+	_, err := primary.AddSubsession("sub1", StyleStream, SubsessionOptions{ListenPort: 1000})
+	if err != nil {
+		t.Fatalf("AddSubsession() error = %v", err)
+	}
+}
