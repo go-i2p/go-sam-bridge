@@ -142,27 +142,13 @@ func (d *DatagramSessionImpl) Send(dest string, data []byte, opts DatagramSendOp
 	// Determine destination port (use ToPort if specified, otherwise 0)
 	toPort := uint16(opts.ToPort)
 
-	// NOTE: Option semantics are implemented by go-datagrams. This layer only
-	// forwards the SAM 3.3 option mapping as provided by the client.
 	// Forward SAM 3.3 options to go-datagrams when specified
-	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
-		dgOpts := datagrams.EmptyOptions()
-		if opts.SendTags > 0 {
-			dgOpts.Set("SEND_TAGS", fmt.Sprintf("%d", opts.SendTags))
-		}
-		if opts.TagThreshold > 0 {
-			dgOpts.Set("TAG_THRESHOLD", fmt.Sprintf("%d", opts.TagThreshold))
-		}
-		if opts.Expires > 0 {
-			dgOpts.Set("EXPIRES", fmt.Sprintf("%d", opts.Expires))
-		}
-		if opts.SendLeasesetSet {
-			if opts.SendLeaseset {
-				dgOpts.Set("SEND_LEASESET", "true")
-			} else {
-				dgOpts.Set("SEND_LEASESET", "false")
-			}
-		}
+	sam33 := sam33Options{
+		SendTags: opts.SendTags, TagThreshold: opts.TagThreshold,
+		Expires: opts.Expires, SendLeaseset: opts.SendLeaseset,
+		SendLeasesetSet: opts.SendLeasesetSet,
+	}
+	if dgOpts := sam33.buildSAM33Options(); dgOpts != nil {
 		if err := datagramConn.SendToWithOptions(data, dest, toPort, dgOpts); err != nil {
 			return fmt.Errorf("failed to send datagram: %w", err)
 		}

@@ -90,3 +90,43 @@ func (h *offlineSignatureHolder) getOfflineSignature() []byte {
 	copy(sig, h.sig)
 	return sig
 }
+
+// sam33Options holds the SAM 3.3 send options shared between datagram and raw sessions.
+type sam33Options struct {
+	SendTags        int
+	TagThreshold    int
+	Expires         int
+	SendLeaseset    bool
+	SendLeasesetSet bool
+}
+
+// hasSAM33Options returns true if any SAM 3.3 option is set.
+func (o sam33Options) hasSAM33Options() bool {
+	return o.SendTags != 0 || o.TagThreshold != 0 || o.Expires != 0 || o.SendLeasesetSet
+}
+
+// buildSAM33Options converts SAM 3.3 send options to go-datagrams Options.
+// Returns nil if no SAM 3.3 options are set.
+func (o sam33Options) buildSAM33Options() *datagrams.Options {
+	if !o.hasSAM33Options() {
+		return nil
+	}
+	dgOpts := datagrams.EmptyOptions()
+	if o.SendTags > 0 {
+		dgOpts.Set("SEND_TAGS", fmt.Sprintf("%d", o.SendTags))
+	}
+	if o.TagThreshold > 0 {
+		dgOpts.Set("TAG_THRESHOLD", fmt.Sprintf("%d", o.TagThreshold))
+	}
+	if o.Expires > 0 {
+		dgOpts.Set("EXPIRES", fmt.Sprintf("%d", o.Expires))
+	}
+	if o.SendLeasesetSet {
+		if o.SendLeaseset {
+			dgOpts.Set("SEND_LEASESET", "true")
+		} else {
+			dgOpts.Set("SEND_LEASESET", "false")
+		}
+	}
+	return dgOpts
+}
