@@ -338,40 +338,20 @@ func (r *RawSessionImpl) DatagramConn() *datagrams.DatagramConn {
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform RAW-specific cleanup.
 func (r *RawSessionImpl) Close() error {
-	r.mu.Lock()
-	status := r.Status()
-	if status == StatusClosed || status == StatusClosing {
-		r.mu.Unlock()
-		return nil
-	}
-	r.mu.Unlock()
-
-	// Cancel context to stop all goroutines
-	r.cancel()
-
-	// Wait for receive goroutines to finish
-	r.receiveWg.Wait()
-
-	// Close receive channel
-	r.mu.Lock()
-	if r.receiveChan != nil {
-		close(r.receiveChan)
-		r.receiveChan = nil
-	}
-	// Close UDP connection if we own it
-	if r.udpConn != nil {
-		r.udpConn.Close()
-		r.udpConn = nil
-	}
-	// Close DatagramConn if configured
-	if r.datagramConn != nil {
-		r.datagramConn.Close()
-		r.datagramConn = nil
-	}
-	r.mu.Unlock()
-
-	// Close base session (control connection) - this sets status to CLOSED
-	return r.BaseSession.Close()
+	return closeDGResources(&r.mu, r.Status, r.cancel, &r.receiveWg, func() {
+		if r.receiveChan != nil {
+			close(r.receiveChan)
+			r.receiveChan = nil
+		}
+		if r.udpConn != nil {
+			r.udpConn.Close()
+			r.udpConn = nil
+		}
+		if r.datagramConn != nil {
+			r.datagramConn.Close()
+			r.datagramConn = nil
+		}
+	}, r.BaseSession)
 }
 
 // formatPort converts port number to string.

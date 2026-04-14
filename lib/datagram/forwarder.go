@@ -163,6 +163,14 @@ func (f *Forwarder) ForwardRaw(fromPort, toPort, protocol int, payload []byte) e
 	return err
 }
 
+// buildForwardPayload assembles a header and payload into a single byte slice.
+func buildForwardPayload(header string, payload []byte) []byte {
+	data := make([]byte, len(header)+len(payload))
+	copy(data, header)
+	copy(data[len(header):], payload)
+	return data
+}
+
 // ForwardDatagram forwards a repliable datagram to the configured client address.
 // Prepends the source destination per SAM spec:
 //
@@ -189,12 +197,7 @@ func (f *Forwarder) ForwardDatagram(destination string, payload []byte) error {
 		return ErrForwarderNotStarted
 	}
 
-	// Format: "$destination\n$payload"
-	header := destination + "\n"
-	data := make([]byte, len(header)+len(payload))
-	copy(data, header)
-	copy(data[len(header):], payload)
-
+	data := buildForwardPayload(destination+"\n", payload)
 	_, err := conn.WriteTo(data, addr)
 	return err
 }
@@ -227,12 +230,8 @@ func (f *Forwarder) ForwardDatagramWithPorts(destination string, fromPort, toPor
 		return ErrForwarderNotStarted
 	}
 
-	// Format: "$destination FROM_PORT=nnn TO_PORT=nnn\n$payload"
 	header := FormatDatagramHeaderWithPorts(destination, fromPort, toPort)
-	data := make([]byte, len(header)+len(payload))
-	copy(data, header)
-	copy(data[len(header):], payload)
-
+	data := buildForwardPayload(header, payload)
 	_, err := conn.WriteTo(data, addr)
 	return err
 }

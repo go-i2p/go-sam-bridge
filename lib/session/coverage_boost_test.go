@@ -155,16 +155,16 @@ func TestOfflineSignatureHolder_SetGet(t *testing.T) {
 	h := &offlineSignatureHolder{}
 
 	// Initially nil
-	if h.getOfflineSignature() != nil {
-		t.Error("getOfflineSignature() should return nil initially")
+	if h.OfflineSignature() != nil {
+		t.Error("OfflineSignature() should return nil initially")
 	}
 
 	// Set signature
 	sig := []byte{1, 2, 3, 4, 5}
-	h.setOfflineSignature(sig)
+	h.SetOfflineSignature(sig)
 
 	// Get should return a copy
-	got := h.getOfflineSignature()
+	got := h.OfflineSignature()
 	if len(got) != 5 {
 		t.Fatalf("getOfflineSignature() len = %d, want 5", len(got))
 	}
@@ -176,9 +176,9 @@ func TestOfflineSignatureHolder_SetGet(t *testing.T) {
 
 	// Modifying the returned copy should not affect stored data
 	got[0] = 99
-	got2 := h.getOfflineSignature()
+	got2 := h.OfflineSignature()
 	if got2[0] != 1 {
-		t.Error("getOfflineSignature() should return independent copies")
+		t.Error("OfflineSignature() should return independent copies")
 	}
 }
 

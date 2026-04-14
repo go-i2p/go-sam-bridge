@@ -41,6 +41,18 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 		streamAcceptor := handler.NewStreamingAcceptor()
 		streamForwarder := handler.NewStreamingForwarder()
 
+		// Create NAMING handler early so session callback can wire leaseset provider
+		namingHandler := handler.NewNamingHandler(deps.DestManager)
+		if deps.DestResolver != nil {
+			namingHandler.SetDestinationResolver(deps.DestResolver)
+		} else if deps.I2CPClient != nil {
+			// Auto-create resolver from I2CP client when available (Gap 9)
+			if resolver, err := i2cp.NewClientDestinationResolverAdapter(deps.I2CPClient, 0); err == nil {
+				namingHandler.SetDestinationResolver(resolver)
+				log.Debug("Auto-wired I2CP destination resolver to NAMING handler")
+			}
+		}
+
 		// Register SESSION handler with I2CP provider for tunnel waiting
 		sessionHandler := handler.NewSessionHandler(deps.DestManager)
 		if deps.I2CPProvider != nil {
@@ -49,7 +61,7 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 
 		// Set session created callback to wire StreamManager per session
 		sessionHandler.SetSessionCreatedCallback(createStreamManagerCallback(
-			deps, streamConnector, streamAcceptor, streamForwarder,
+			deps, streamConnector, streamAcceptor, streamForwarder, namingHandler,
 		))
 
 		router.Register("SESSION CREATE", sessionHandler)
@@ -74,16 +86,6 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 		log.Debug("Registered RAW handler")
 
 		// Register NAMING handler
-		namingHandler := handler.NewNamingHandler(deps.DestManager)
-		if deps.DestResolver != nil {
-			namingHandler.SetDestinationResolver(deps.DestResolver)
-		} else if deps.I2CPClient != nil {
-			// Auto-create resolver from I2CP client when available (Gap 9)
-			if resolver, err := i2cp.NewClientDestinationResolverAdapter(deps.I2CPClient, 0); err == nil {
-				namingHandler.SetDestinationResolver(resolver)
-				log.Debug("Auto-wired I2CP destination resolver to NAMING handler")
-			}
-		}
 		router.Register("NAMING LOOKUP", namingHandler)
 		log.Debug("Registered NAMING handler")
 
@@ -113,14 +115,17 @@ func RegisterAuthHandlers(router *handler.Router, authStore *bridge.AuthStore, d
 }
 
 // createStreamManagerCallback creates a session callback that wires
-// StreamManager for STREAM sessions and DatagramConn for datagram/raw sessions.
+// StreamManager for STREAM sessions, DatagramConn for datagram/raw sessions,
+// and LeasesetLookupProvider for NAMING LOOKUP OPTIONS=true.
 // This is internal and not exported.
 func createStreamManagerCallback(
 	deps *Dependencies,
 	connector *handler.StreamingConnector,
 	acceptor *handler.StreamingAcceptor,
 	forwarder *handler.StreamingForwarder,
+	namingHandler *handler.NamingHandler,
 ) handler.SessionCreatedCallback {
+	var leasesetWired bool
 	return func(sess session.Session, i2cpHandle session.I2CPSessionHandle) {
 		if i2cpHandle == nil || deps.I2CPClient == nil {
 			deps.Logger.WithFields(map[string]interface{}{
@@ -134,6 +139,15 @@ func createStreamManagerCallback(
 		if !ok {
 			deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot wire session: unexpected I2CP session type")
 			return
+		}
+
+		// Wire LeasesetLookupProvider on first I2CP session (AUDIT: NAMING OPTIONS wiring)
+		if !leasesetWired && namingHandler != nil {
+			if adapter, err := i2cp.NewLeasesetAdapter(i2cpSess); err == nil {
+				namingHandler.SetLeasesetProvider(adapter)
+				leasesetWired = true
+				deps.Logger.Debug("Auto-wired LeasesetLookupProvider for NAMING LOOKUP OPTIONS=true")
+			}
 		}
 
 		switch sess.Style() {

@@ -307,40 +307,20 @@ func (d *DatagramSessionImpl) DatagramConn() *datagrams.DatagramConn {
 // Close terminates the session and releases all resources.
 // Overrides BaseSession.Close to perform DATAGRAM-specific cleanup.
 func (d *DatagramSessionImpl) Close() error {
-	d.mu.Lock()
-	status := d.Status()
-	if status == StatusClosed || status == StatusClosing {
-		d.mu.Unlock()
-		return nil
-	}
-	d.mu.Unlock()
-
-	// Cancel context to stop all goroutines
-	d.cancel()
-
-	// Wait for receive goroutines to finish
-	d.receiveWg.Wait()
-
-	// Close receive channel
-	d.mu.Lock()
-	if d.receiveChan != nil {
-		close(d.receiveChan)
-		d.receiveChan = nil
-	}
-	// Close UDP connection if we own it
-	if d.udpConn != nil {
-		d.udpConn.Close()
-		d.udpConn = nil
-	}
-	// Close datagram connection if we own it
-	if d.datagramConn != nil {
-		d.datagramConn.Close()
-		d.datagramConn = nil
-	}
-	d.mu.Unlock()
-
-	// Close base session (control connection) - this sets status to CLOSED
-	return d.BaseSession.Close()
+	return closeDGResources(&d.mu, d.Status, d.cancel, &d.receiveWg, func() {
+		if d.receiveChan != nil {
+			close(d.receiveChan)
+			d.receiveChan = nil
+		}
+		if d.udpConn != nil {
+			d.udpConn.Close()
+			d.udpConn = nil
+		}
+		if d.datagramConn != nil {
+			d.datagramConn.Close()
+			d.datagramConn = nil
+		}
+	}, d.BaseSession)
 }
 
 // MaxDatagramSize is the maximum size for repliable datagrams per SAM specification.

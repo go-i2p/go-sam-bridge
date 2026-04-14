@@ -440,6 +440,32 @@ func (sess *I2CPSession) onDestination(session *go_i2cp.Session, requestId uint3
 	}
 }
 
+// registerPendingLookup adds a result channel to the pending lookups map for name.
+func (sess *I2CPSession) registerPendingLookup(name string, ch chan *go_i2cp.Destination) {
+	sess.pendingLookupsMu.Lock()
+	defer sess.pendingLookupsMu.Unlock()
+	if sess.pendingLookups == nil {
+		sess.pendingLookups = make(map[string][]chan *go_i2cp.Destination)
+	}
+	sess.pendingLookups[name] = append(sess.pendingLookups[name], ch)
+}
+
+// removePendingLookup removes a specific result channel from the pending lookups map.
+func (sess *I2CPSession) removePendingLookup(name string, ch chan *go_i2cp.Destination) {
+	sess.pendingLookupsMu.Lock()
+	defer sess.pendingLookupsMu.Unlock()
+	chs := sess.pendingLookups[name]
+	for i, c := range chs {
+		if c == ch {
+			sess.pendingLookups[name] = append(chs[:i], chs[i+1:]...)
+			break
+		}
+	}
+	if len(sess.pendingLookups[name]) == 0 {
+		delete(sess.pendingLookups, name)
+	}
+}
+
 // LookupDestinationSync performs a synchronous destination lookup by initiating
 // the async LookupDestinationWithContext and waiting for the OnDestination callback.
 func (sess *I2CPSession) LookupDestinationSync(ctx context.Context, name string, timeout time.Duration) (*go_i2cp.Destination, error) {
@@ -452,28 +478,10 @@ func (sess *I2CPSession) LookupDestinationSync(ctx context.Context, name string,
 	}
 
 	resultCh := make(chan *go_i2cp.Destination, 1)
-
-	sess.pendingLookupsMu.Lock()
-	if sess.pendingLookups == nil {
-		sess.pendingLookups = make(map[string][]chan *go_i2cp.Destination)
-	}
-	sess.pendingLookups[name] = append(sess.pendingLookups[name], resultCh)
-	sess.pendingLookupsMu.Unlock()
+	sess.registerPendingLookup(name, resultCh)
 
 	if err := i2cpSession.LookupDestinationWithContext(ctx, name, timeout); err != nil {
-		// Clean up the pending lookup on error
-		sess.pendingLookupsMu.Lock()
-		chs := sess.pendingLookups[name]
-		for i, ch := range chs {
-			if ch == resultCh {
-				sess.pendingLookups[name] = append(chs[:i], chs[i+1:]...)
-				break
-			}
-		}
-		if len(sess.pendingLookups[name]) == 0 {
-			delete(sess.pendingLookups, name)
-		}
-		sess.pendingLookupsMu.Unlock()
+		sess.removePendingLookup(name, resultCh)
 		return nil, err
 	}
 
@@ -481,19 +489,7 @@ func (sess *I2CPSession) LookupDestinationSync(ctx context.Context, name string,
 	case dest := <-resultCh:
 		return dest, nil
 	case <-ctx.Done():
-		// Clean up on context cancellation
-		sess.pendingLookupsMu.Lock()
-		chs := sess.pendingLookups[name]
-		for i, ch := range chs {
-			if ch == resultCh {
-				sess.pendingLookups[name] = append(chs[:i], chs[i+1:]...)
-				break
-			}
-		}
-		if len(sess.pendingLookups[name]) == 0 {
-			delete(sess.pendingLookups, name)
-		}
-		sess.pendingLookupsMu.Unlock()
+		sess.removePendingLookup(name, resultCh)
 		return nil, ctx.Err()
 	}
 }

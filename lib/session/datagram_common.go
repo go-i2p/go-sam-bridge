@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -71,16 +72,16 @@ type offlineSignatureHolder struct {
 	sig []byte
 }
 
-// setOfflineSignature sets the offline signature data.
-func (h *offlineSignatureHolder) setOfflineSignature(sig []byte) {
+// SetOfflineSignature sets the offline signature data.
+func (h *offlineSignatureHolder) SetOfflineSignature(sig []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sig = make([]byte, len(sig))
 	copy(h.sig, sig)
 }
 
-// getOfflineSignature returns a copy of the offline signature data.
-func (h *offlineSignatureHolder) getOfflineSignature() []byte {
+// OfflineSignature returns a copy of the offline signature data.
+func (h *offlineSignatureHolder) OfflineSignature() []byte {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.sig == nil {
@@ -129,4 +130,33 @@ func (o sam33Options) buildSAM33Options() *datagrams.Options {
 		}
 	}
 	return dgOpts
+}
+
+// closeDGResources performs the shared close sequence for DATAGRAM and RAW sessions.
+// It checks status, cancels the context, waits for goroutines, calls cleanupFn under
+// the write lock to release session-specific resources, then closes the base session.
+func closeDGResources(
+	mu *sync.RWMutex,
+	statusFn func() Status,
+	cancel context.CancelFunc,
+	wg *sync.WaitGroup,
+	cleanupFn func(),
+	base *BaseSession,
+) error {
+	mu.Lock()
+	status := statusFn()
+	if status == StatusClosed || status == StatusClosing {
+		mu.Unlock()
+		return nil
+	}
+	mu.Unlock()
+
+	cancel()
+	wg.Wait()
+
+	mu.Lock()
+	cleanupFn()
+	mu.Unlock()
+
+	return base.Close()
 }

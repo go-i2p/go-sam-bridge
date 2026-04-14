@@ -62,8 +62,8 @@ type Datagram2SessionImpl struct {
 	cleanupMu    sync.Mutex
 	cleanupTimer *time.Timer
 
-	// offlineSignature stores the offline signature data if provided
-	offlineSignature []byte
+	// offlineSignatureHolder provides thread-safe offline signature get/set.
+	offlineSignatureHolder
 }
 
 // DefaultDatagram2NonceExpiry is the default time to keep nonces for replay protection.
@@ -212,29 +212,6 @@ func (d *Datagram2SessionImpl) IsForwarding() bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.forwardAddr != nil
-}
-
-// SetOfflineSignature sets the offline signature data for this session.
-// Offline signatures allow transient keys while keeping long-term identity keys offline.
-//
-// Per SAMv3.md, DATAGRAM2 supports offline signatures (DATAGRAM does not).
-func (d *Datagram2SessionImpl) SetOfflineSignature(sig []byte) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.offlineSignature = make([]byte, len(sig))
-	copy(d.offlineSignature, sig)
-}
-
-// OfflineSignature returns the offline signature data, or nil if not set.
-func (d *Datagram2SessionImpl) OfflineSignature() []byte {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	if d.offlineSignature == nil {
-		return nil
-	}
-	sig := make([]byte, len(d.offlineSignature))
-	copy(sig, d.offlineSignature)
-	return sig
 }
 
 // CheckReplay checks if a nonce has been seen before (replay attack).

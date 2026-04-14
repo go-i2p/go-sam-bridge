@@ -60,9 +60,8 @@ type Datagram3SessionImpl struct {
 	// This wraps an I2CP session and handles protocol-specific envelope formatting.
 	datagramConn *datagrams.DatagramConn
 
-	// offlineSignature stores the offline signature data if provided.
-	// Per SAMv3.md, DATAGRAM3 supports offline signatures (unlike DATAGRAM).
-	offlineSignature []byte
+	// offlineSignatureHolder provides thread-safe offline signature get/set.
+	offlineSignatureHolder
 
 	// Context for cancellation
 	ctx    context.Context
@@ -223,29 +222,6 @@ func (d *Datagram3SessionImpl) IsForwarding() bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.forwardAddr != nil
-}
-
-// SetOfflineSignature sets the offline signature data for this session.
-// Offline signatures allow transient keys while keeping long-term identity keys offline.
-//
-// Per SAMv3.md, DATAGRAM3 supports offline signatures (DATAGRAM does not).
-func (d *Datagram3SessionImpl) SetOfflineSignature(sig []byte) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.offlineSignature = make([]byte, len(sig))
-	copy(d.offlineSignature, sig)
-}
-
-// OfflineSignature returns the offline signature data, or nil if not set.
-func (d *Datagram3SessionImpl) OfflineSignature() []byte {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	if d.offlineSignature == nil {
-		return nil
-	}
-	sig := make([]byte, len(d.offlineSignature))
-	copy(sig, d.offlineSignature)
-	return sig
 }
 
 // DeliverDatagram handles an incoming datagram and delivers it to the
