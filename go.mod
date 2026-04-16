@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/go-i2p/common v0.1.4-0.20260406221321-5d52c2809acd
 	github.com/go-i2p/go-datagrams v0.1.2
-	github.com/go-i2p/go-i2cp v0.1.4-0.20260410222419-eb65cbb4ebaa
+	github.com/go-i2p/go-i2cp v0.1.4-0.20260416155517-f8c330e19c2b
 	github.com/go-i2p/go-i2p v0.1.4-0.20260410153854-7378e61b4d26
 	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
 	github.com/hashicorp/golang-lru/v2 v2.0.7
