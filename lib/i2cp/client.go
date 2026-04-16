@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-i2p/logger"
+
 	go_i2cp "github.com/go-i2p/go-i2cp"
 )
 
@@ -121,6 +123,7 @@ func NewClient(config *ClientConfig) *Client {
 //
 // Returns an error if the connection fails or times out.
 func (c *Client) Connect(ctx context.Context) error {
+	log.WithFields(logger.Fields{"pkg": "i2cp", "func": "Client.Connect", "addr": c.config.RouterAddr}).Debug("Connecting to I2P router")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -169,6 +172,7 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Connect to the I2P router
 	if err := i2cpClient.Connect(connectCtx); err != nil {
+		log.WithFields(logger.Fields{"pkg": "i2cp", "func": "Client.Connect", "addr": c.config.RouterAddr}).WithError(err).Error("Failed to connect to I2P router")
 		return fmt.Errorf("failed to connect to I2P router at %s: %w", c.config.RouterAddr, err)
 	}
 
@@ -183,6 +187,8 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	c.i2cpClient = i2cpClient
 	c.connected = true
+
+	log.WithFields(logger.Fields{"pkg": "i2cp", "func": "Client.Connect", "addr": c.config.RouterAddr}).Info("Connected to I2P router")
 
 	return nil
 }

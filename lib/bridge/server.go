@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/datagram"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
@@ -43,6 +45,7 @@ type Server struct {
 // NewServer creates a new SAM bridge server with the given configuration.
 func NewServer(config *Config, registry session.Registry) (*Server, error) {
 	if err := config.Validate(); err != nil {
+		log.WithFields(logger.Fields{"pkg": "bridge", "func": "NewServer"}).WithError(err).Error("Invalid server configuration")
 		return nil, err
 	}
 
@@ -84,9 +87,11 @@ func (s *Server) AuthStore() *AuthStore {
 // ListenAndServe starts listening on the configured address and serves clients.
 // This method blocks until the server is closed.
 func (s *Server) ListenAndServe() error {
+	log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.ListenAndServe", "addr": s.config.ListenAddr}).Debug("Starting SAM bridge server")
 	// Start UDP datagram listener if enabled
 	if s.config.DatagramPort > 0 {
 		if err := s.startUDPListener(); err != nil {
+			log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.ListenAndServe"}).WithError(err).Error("Failed to start UDP listener")
 			return fmt.Errorf("failed to start UDP listener: %w", err)
 		}
 	}
@@ -94,8 +99,10 @@ func (s *Server) ListenAndServe() error {
 	listener, err := net.Listen("tcp", s.config.ListenAddr)
 	if err != nil {
 		s.stopUDPListener() // Clean up UDP if TCP fails
+		log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.ListenAndServe", "addr": s.config.ListenAddr}).WithError(err).Error("Failed to bind TCP listener")
 		return err
 	}
+	log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.ListenAndServe", "addr": s.config.ListenAddr}).Info("SAM bridge TCP listener started")
 
 	// Wrap with TLS if configured
 	if s.config.TLSConfig != nil {
@@ -166,6 +173,8 @@ func (s *Server) canAccept() bool {
 // handleConnection processes a single client connection.
 func (s *Server) handleConnection(conn net.Conn) {
 	c := NewConnection(conn, s.config.Limits.ReadBufferSize)
+	remoteAddr := conn.RemoteAddr().String()
+	log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.handleConnection", "remote": remoteAddr}).Debug("New SAM client connection")
 
 	s.mu.Lock()
 	s.connections[c] = struct{}{}
@@ -187,6 +196,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 		}
 		c.Close()
+		log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.handleConnection", "remote": remoteAddr}).Debug("SAM client connection closed")
 	}()
 
 	ctx = handler.NewContext(conn, s.registry)
@@ -341,6 +351,7 @@ func (s *Server) dispatchCommand(
 	c *Connection,
 	cmd *protocol.Command,
 ) (*protocol.Response, error) {
+	log.WithFields(logger.Fields{"pkg": "bridge", "func": "Server.dispatchCommand", "cmd": cmd.Verb + " " + cmd.Action}).Debug("Dispatching SAM command")
 	// Check handshake state
 	if !ctx.HandshakeComplete && !isHandshakeCommand(cmd) {
 		return protocol.NewResponse("HELLO").

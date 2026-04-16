@@ -9,7 +9,7 @@ import (
 	"github.com/go-i2p/go-sam-bridge/lib/embedding"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
-	"github.com/sirupsen/logrus"
+	"github.com/go-i2p/logger"
 )
 
 // TestParseDatagramPort verifies boundary cases for parseDatagramPort.
@@ -113,7 +113,7 @@ func TestCreateHandlerRegistrar_RouterKeys(t *testing.T) {
 		Registry:     session.NewRegistry(),
 		DestManager:  destination.NewManager(),
 		DatagramPort: embedding.DefaultDatagramPort,
-		Logger:       logrus.New(),
+		Logger:       logger.GetGoI2PLogger(),
 	}
 
 	router := handler.NewRouter()

@@ -47,7 +47,7 @@
 //   - WithListener: Provide custom net.Listener
 //   - WithRegistry: Provide custom session.Registry
 //   - WithI2CPProvider: Provide custom I2CP session provider
-//   - WithLogger: Provide custom logrus.Logger
+//   - WithLogger: Provide custom *logger.Logger (github.com/go-i2p/logger)
 //   - WithTLS: Enable TLS with custom config
 //   - WithAuth: Set SAM authentication users
 //   - WithI2CPCredentials: Set I2CP authentication

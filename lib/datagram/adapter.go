@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/go-i2p/go-datagrams"
+	"github.com/go-i2p/logger"
 )
 
 // Adapter wraps go-datagrams' DatagramConn to implement the DatagramConnection interface.
@@ -32,14 +33,17 @@ type Adapter struct {
 // The conn must already be initialized and ready for use.
 func NewAdapter(conn *datagrams.DatagramConn) (*Adapter, error) {
 	if conn == nil {
+		log.WithFields(logger.Fields{"pkg": "datagram", "func": "NewAdapter"}).Error("datagram conn cannot be nil")
 		return nil, fmt.Errorf("datagram conn cannot be nil")
 	}
 
 	// Verify connection is not closed
 	if conn.IsClosed() {
+		log.WithFields(logger.Fields{"pkg": "datagram", "func": "NewAdapter"}).Error("datagram conn is closed")
 		return nil, fmt.Errorf("datagram conn is closed")
 	}
 
+	log.WithFields(logger.Fields{"pkg": "datagram", "func": "NewAdapter"}).Debug("Created datagram adapter")
 	return &Adapter{conn: conn}, nil
 }
 

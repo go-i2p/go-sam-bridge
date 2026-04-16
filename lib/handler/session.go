@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/destination"
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
@@ -85,6 +87,7 @@ func (h *SessionHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.
 //	SESSION STATUS RESULT=INVALID_KEY
 //	SESSION STATUS RESULT=I2P_ERROR MESSAGE="..."
 func (h *SessionHandler) handleCreate(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	log.WithFields(logger.Fields{"pkg": "handler", "func": "SessionHandler.handleCreate"}).Debug("Handling SESSION CREATE")
 	// Validate preconditions
 	if resp := h.validateCreatePreconditions(ctx); resp != nil {
 		return resp, nil

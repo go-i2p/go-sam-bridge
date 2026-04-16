@@ -8,7 +8,7 @@ import (
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
-	"github.com/sirupsen/logrus"
+	"github.com/go-i2p/logger"
 )
 
 // Option is a functional option for configuring the Bridge.
@@ -83,7 +83,7 @@ func WithDestinationResolver(r handler.DestinationResolver) Option {
 
 // WithLogger sets a custom logger instance.
 // When provided, the bridge uses this logger instead of creating its own.
-func WithLogger(l *logrus.Logger) Option {
+func WithLogger(l *logger.Logger) Option {
 	return func(c *Config) {
 		c.Logger = l
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
-	"github.com/sirupsen/logrus"
+	"github.com/go-i2p/logger"
 )
 
 func TestWithListenAddr(t *testing.T) {
@@ -68,7 +68,7 @@ func TestWithI2CPProvider(t *testing.T) {
 
 func TestWithLogger(t *testing.T) {
 	cfg := DefaultConfig()
-	log := logrus.New()
+	log := logger.GetGoI2PLogger()
 	WithLogger(log)(cfg)
 
 	if cfg.Logger != log {

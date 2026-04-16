@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-i2p/go-i2p/lib/config"
 	"github.com/go-i2p/go-i2p/lib/embedded"
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 	"github.com/go-i2p/go-sam-bridge/lib/datagram"
 )
@@ -177,7 +179,7 @@ func (b *Bridge) Start(ctx context.Context) error {
 	b.running.Store(true)
 	b.watchContext(runCtx)
 
-	b.deps.Logger.WithField("addr", b.config.ListenAddr).Info("SAM bridge started")
+	b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Start", "addr": b.config.ListenAddr}).Info("SAM bridge started")
 
 	return nil
 }
@@ -204,7 +206,7 @@ func (b *Bridge) startEmbeddedRouter() error {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	b.deps.Logger.Info("Embedded router started")
+	b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.startEmbeddedRouter"}).Info("Embedded router started")
 	return nil
 }
 
@@ -214,11 +216,11 @@ func (b *Bridge) startUDPListener() {
 	}
 
 	if err := b.udpListener.Start(); err != nil {
-		b.deps.Logger.WithError(err).Warn("Failed to start UDP datagram listener")
+		b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.startUDPListener"}).WithError(err).Warn("Failed to start UDP datagram listener")
 		return
 	}
 
-	b.deps.Logger.WithField("addr", b.udpListener.Addr()).Info("UDP datagram listener started")
+	b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.startUDPListener", "addr": b.udpListener.Addr()}).Info("UDP datagram listener started")
 }
 
 func (b *Bridge) startTCPServer() error {
@@ -287,7 +289,7 @@ func (b *Bridge) Stop(ctx context.Context) error {
 	}
 
 	b.stopOnce.Do(func() {
-		b.deps.Logger.Info("Stopping SAM bridge...")
+		b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).Info("Stopping SAM bridge...")
 
 		b.running.Store(false)
 
@@ -298,31 +300,31 @@ func (b *Bridge) Stop(ctx context.Context) error {
 
 		// Close the server
 		if err := b.server.Close(); err != nil {
-			b.deps.Logger.WithError(err).Warn("Error closing server")
+			b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).WithError(err).Warn("Error closing server")
 		}
 
 		// Close all sessions
 		if err := b.deps.Registry.Close(); err != nil {
-			b.deps.Logger.WithError(err).Warn("Error closing sessions")
+			b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).WithError(err).Warn("Error closing sessions")
 		}
 
 		// Close UDP listener
 		if b.udpListener != nil {
 			if err := b.udpListener.Close(); err != nil {
-				b.deps.Logger.WithError(err).Warn("Error closing UDP listener")
+				b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).WithError(err).Warn("Error closing UDP listener")
 			} else {
-				b.deps.Logger.Info("UDP datagram listener stopped")
+				b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).Info("UDP datagram listener stopped")
 			}
 		}
 
-		b.deps.Logger.Info("SAM bridge stopped")
+		b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).Info("SAM bridge stopped")
 
 		// Stop embedded router if we started one
 		if b.embeddedRouter != nil {
 			if err := b.embeddedRouter.Stop(); err != nil {
-				b.deps.Logger.WithError(err).Warn("Error stopping embedded router")
+				b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).WithError(err).Warn("Error stopping embedded router")
 			}
-			b.deps.Logger.Info("Embedded router stopped")
+			b.deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "Bridge.Stop"}).Info("Embedded router stopped")
 		}
 	})
 

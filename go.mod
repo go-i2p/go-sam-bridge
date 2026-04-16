@@ -8,6 +8,7 @@ require (
 	github.com/go-i2p/go-i2cp v0.1.4-0.20260416155517-f8c330e19c2b
 	github.com/go-i2p/go-i2p v0.1.4-0.20260410153854-7378e61b4d26
 	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
+	github.com/go-i2p/logger v0.1.5
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/crypto v0.50.0
@@ -25,7 +26,6 @@ require (
 	github.com/go-i2p/elgamal v0.0.2 // indirect
 	github.com/go-i2p/go-nat-listener v0.0.0-20260402222111-bfda0025cb1b // indirect
 	github.com/go-i2p/go-noise v0.1.4-0.20260406215923-93b02ff49d4f // indirect
-	github.com/go-i2p/logger v0.1.5 // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
 	github.com/go-i2p/su3 v0.0.2-0.20260406203134-0ec837609b00 // indirect

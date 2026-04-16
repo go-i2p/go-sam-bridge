@@ -2,6 +2,8 @@ package embedding
 
 import (
 	"github.com/go-i2p/go-datagrams"
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/bridge"
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
@@ -34,7 +36,7 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 		helloConfig := handler.DefaultHelloConfig()
 		helloHandler := handler.NewHelloHandler(helloConfig)
 		router.Register("HELLO VERSION", helloHandler)
-		log.Debug("Registered HELLO VERSION handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered HELLO VERSION handler")
 
 		// Create STREAM handlers
 		streamConnector := handler.NewStreamingConnector()
@@ -67,43 +69,43 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 		router.Register("SESSION CREATE", sessionHandler)
 		router.Register("SESSION ADD", sessionHandler)
 		router.Register("SESSION REMOVE", sessionHandler)
-		log.Debug("Registered SESSION handlers")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered SESSION handlers")
 
 		// Register STREAM handlers
 		streamHandler := handler.NewStreamHandler(streamConnector, streamAcceptor, streamForwarder)
 		router.Register("STREAM CONNECT", streamHandler)
 		router.Register("STREAM ACCEPT", streamHandler)
 		router.Register("STREAM FORWARD", streamHandler)
-		log.Debug("Registered STREAM handlers")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered STREAM handlers")
 
 		// Register DATAGRAM handler
 		handler.RegisterDatagramHandler(router)
-		log.Debug("Registered DATAGRAM handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered DATAGRAM handler")
 
 		// Register RAW handler
 		rawHandler := handler.NewRawHandler()
 		router.Register("RAW SEND", rawHandler)
-		log.Debug("Registered RAW handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered RAW handler")
 
 		// Register NAMING handler
 		router.Register("NAMING LOOKUP", namingHandler)
-		log.Debug("Registered NAMING handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered NAMING handler")
 
 		// Register DEST handler
 		destHandler := handler.NewDestHandler(deps.DestManager)
 		router.Register("DEST GENERATE", destHandler)
-		log.Debug("Registered DEST handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered DEST handler")
 
 		// Register PING handler
 		handler.RegisterPingHandler(router)
-		log.Debug("Registered PING handler")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered PING handler")
 
 		// Register utility handlers (QUIT, HELP, etc.)
 		handler.RegisterUtilityHandlers(router)
 		handler.RegisterHelpHandler(router)
-		log.Debug("Registered utility handlers")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar"}).Debug("Registered utility handlers")
 
-		log.WithField("count", router.Count()).Info("All SAM command handlers registered")
+		log.WithFields(logger.Fields{"pkg": "embedding", "func": "DefaultHandlerRegistrar", "count": router.Count()}).Info("All SAM command handlers registered")
 	}
 }
 
@@ -111,7 +113,7 @@ func DefaultHandlerRegistrar() HandlerRegistrarFunc {
 // Call this separately when authentication is enabled.
 func RegisterAuthHandlers(router *handler.Router, authStore *bridge.AuthStore, deps *Dependencies) {
 	handler.RegisterAuthHandlers(router, authStore)
-	deps.Logger.Debug("Registered AUTH handlers")
+	deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "RegisterAuthHandlers"}).Debug("Registered AUTH handlers")
 }
 
 // createStreamManagerCallback creates a session callback that wires
@@ -128,16 +130,13 @@ func createStreamManagerCallback(
 	var leasesetWired bool
 	return func(sess session.Session, i2cpHandle session.I2CPSessionHandle) {
 		if i2cpHandle == nil || deps.I2CPClient == nil {
-			deps.Logger.WithFields(map[string]interface{}{
-				"sessionID": sess.ID(),
-				"style":     sess.Style(),
-			}).Warn("Session created without I2CP transport: STREAM/DATAGRAM/RAW send not available until I2CP is connected")
+			deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "createStreamManagerCallback", "sessionID": sess.ID(), "style": sess.Style()}).Warn("Session created without I2CP transport: STREAM/DATAGRAM/RAW send not available until I2CP is connected")
 			return
 		}
 
 		i2cpSess, ok := i2cpHandle.(*i2cp.I2CPSession)
 		if !ok {
-			deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot wire session: unexpected I2CP session type")
+			deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "createStreamManagerCallback", "sessionID": sess.ID()}).Warn("Cannot wire session: unexpected I2CP session type")
 			return
 		}
 
@@ -146,7 +145,7 @@ func createStreamManagerCallback(
 			if adapter, err := i2cp.NewLeasesetAdapter(i2cpSess); err == nil {
 				namingHandler.SetLeasesetProvider(adapter)
 				leasesetWired = true
-				deps.Logger.Debug("Auto-wired LeasesetLookupProvider for NAMING LOOKUP OPTIONS=true")
+				deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "createStreamManagerCallback"}).Debug("Auto-wired LeasesetLookupProvider for NAMING LOOKUP OPTIONS=true")
 			}
 		}
 
@@ -173,29 +172,29 @@ func wireStreamManager(
 	underlyingSession := i2cpSess.Session()
 	underlyingClient := deps.I2CPClient.I2CPClient()
 	if underlyingSession == nil || underlyingClient == nil {
-		deps.Logger.WithField("sessionID", sessionID).Warn("Cannot create StreamManager: no underlying I2CP session/client")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireStreamManager", "sessionID": sessionID}).Warn("Cannot create StreamManager: no underlying I2CP session/client")
 		return
 	}
 
 	streamManager, err := gostreaming.NewStreamManagerFromSession(underlyingClient, underlyingSession)
 	if err != nil {
-		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to create StreamManager from session")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireStreamManager", "sessionID": sessionID}).WithError(err).Warn("Failed to create StreamManager from session")
 		return
 	}
 
 	adapter, err := samstreaming.NewAdapter(streamManager)
 	if err != nil {
-		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to create StreamManager adapter")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireStreamManager", "sessionID": sessionID}).WithError(err).Warn("Failed to create StreamManager adapter")
 		return
 	}
 
 	connector.RegisterManager(sessionID, adapter)
 	if err := acceptor.RegisterManager(sessionID, adapter); err != nil {
-		deps.Logger.WithField("sessionID", sessionID).WithError(err).Warn("Failed to register acceptor StreamManager")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireStreamManager", "sessionID": sessionID}).WithError(err).Warn("Failed to register acceptor StreamManager")
 	}
 	forwarder.RegisterManager(sessionID, adapter)
 
-	deps.Logger.WithField("sessionID", sessionID).Debug("Registered StreamManager for STREAM session")
+	deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireStreamManager", "sessionID": sessionID}).Debug("Registered StreamManager for STREAM session")
 }
 
 // wireDatagramConn creates and sets a DatagramConn for a datagram/raw session.
@@ -207,7 +206,7 @@ func wireDatagramConn(deps *Dependencies, i2cpSess *i2cp.I2CPSession, sess sessi
 
 	underlyingSession := i2cpSess.Session()
 	if underlyingSession == nil {
-		deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot create DatagramConn: no underlying I2CP session")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireDatagramConn", "sessionID": sess.ID()}).Warn("Cannot create DatagramConn: no underlying I2CP session")
 		return
 	}
 
@@ -216,12 +215,12 @@ func wireDatagramConn(deps *Dependencies, i2cpSess *i2cp.I2CPSession, sess sessi
 
 	conn, err := datagrams.NewDatagramConnWithProtocol(underlyingSession, localPort, protocol)
 	if err != nil {
-		deps.Logger.WithField("sessionID", sess.ID()).WithError(err).Warn("Failed to create DatagramConn for session")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireDatagramConn", "sessionID": sess.ID()}).WithError(err).Warn("Failed to create DatagramConn for session")
 		return
 	}
 
 	setter.SetDatagramConn(conn)
-	deps.Logger.WithField("sessionID", sess.ID()).WithField("style", sess.Style()).Debug("Wired DatagramConn for datagram session")
+	deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wireDatagramConn", "sessionID": sess.ID(), "style": sess.Style()}).Debug("Wired DatagramConn for datagram session")
 }
 
 // wirePrimarySession sets up a PRIMARY session by registering a subsession callback
@@ -237,7 +236,7 @@ func wirePrimarySession(
 ) {
 	primary, ok := sess.(*session.PrimarySessionImpl)
 	if !ok {
-		deps.Logger.WithField("sessionID", sess.ID()).Warn("Cannot wire PRIMARY session: unexpected type")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wirePrimarySession", "sessionID": sess.ID()}).Warn("Cannot wire PRIMARY session: unexpected type")
 		return
 	}
 
@@ -248,10 +247,10 @@ func wirePrimarySession(
 		case session.StyleDatagram, session.StyleRaw, session.StyleDatagram2, session.StyleDatagram3:
 			wireDatagramConn(deps, i2cpSess, sub)
 		}
-		deps.Logger.WithField("subsessionID", sub.ID()).WithField("style", sub.Style()).Debug("Wired transport for PRIMARY subsession")
+		deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wirePrimarySession.subsessionCallback", "subsessionID": sub.ID(), "style": sub.Style()}).Debug("Wired transport for PRIMARY subsession")
 	})
 
-	deps.Logger.WithField("sessionID", sess.ID()).Debug("Wired PRIMARY session with subsession callback")
+	deps.Logger.WithFields(logger.Fields{"pkg": "embedding", "func": "wirePrimarySession", "sessionID": sess.ID()}).Debug("Wired PRIMARY session with subsession callback")
 }
 
 // datagramProtocolForStyle returns the I2CP protocol number for the given SAM session style.

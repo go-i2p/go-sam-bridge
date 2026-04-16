@@ -7,6 +7,8 @@ import (
 	"net"
 	"strings"
 
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	"github.com/go-i2p/go-sam-bridge/lib/util"
@@ -97,6 +99,7 @@ func (h *StreamHandler) Handle(ctx *Context, cmd *protocol.Command) (*protocol.R
 // If the connection succeeds, all remaining data passing through the current
 // socket is forwarded from and to the connected I2P destination peer."
 func (h *StreamHandler) handleConnect(ctx *Context, cmd *protocol.Command) (*protocol.Response, error) {
+	log.WithFields(logger.Fields{"pkg": "handler", "func": "StreamHandler.handleConnect"}).Debug("Handling STREAM CONNECT")
 	params, resp := h.parseConnectParams(ctx, cmd)
 	if resp != nil {
 		return resp, nil

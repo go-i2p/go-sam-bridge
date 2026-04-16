@@ -30,7 +30,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -44,7 +43,7 @@ import (
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	samstreaming "github.com/go-i2p/go-sam-bridge/lib/streaming"
 	"github.com/go-i2p/go-streaming"
-	"github.com/sirupsen/logrus"
+	"github.com/go-i2p/logger"
 )
 
 var (
@@ -60,18 +59,16 @@ func main() {
 	cfg := parseFlags()
 
 	// Configure logging
-	log := logrus.New()
-	log.SetOutput(os.Stdout)
+	log := logger.GetGoI2PLogger()
 	if cfg.Debug {
-		log.SetLevel(logrus.DebugLevel)
-		log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
-		// Enable slog debug output for handler-level diagnostics
-		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		log.SetLevel(logger.DebugLevel)
 	} else {
-		log.SetLevel(logrus.InfoLevel)
+		log.SetLevel(logger.InfoLevel)
 	}
 
-	log.WithFields(logrus.Fields{
+	log.WithFields(logger.Fields{
+		"pkg":       "main",
+		"func":      "main",
 		"version":   Version,
 		"buildTime": BuildTime,
 		"commit":    GitCommit,
@@ -85,12 +82,12 @@ func main() {
 	var i2cpClient *i2cp.Client
 	client, err := connectI2CP(cfg, log)
 	if err != nil {
-		log.WithError(err).Warn("No external I2P router available; using embedded router fallback")
-		log.Info("STREAM/DATAGRAM/RAW sessions will be activated once the embedded router is ready")
+		log.WithFields(logger.Fields{"pkg": "main", "func": "main"}).WithError(err).Warn("No external I2P router available; using embedded router fallback")
+		log.WithFields(logger.Fields{"pkg": "main", "func": "main"}).Info("STREAM/DATAGRAM/RAW sessions will be activated once the embedded router is ready")
 	} else {
 		i2cpClient = client
 		defer i2cpClient.Close()
-		log.WithField("version", i2cpClient.RouterVersion()).Info("Connected to I2P router")
+		log.WithFields(logger.Fields{"pkg": "main", "func": "main", "version": i2cpClient.RouterVersion()}).Info("Connected to I2P router")
 	}
 
 	// Build bridge options — I2CP provider is optional.
@@ -109,7 +106,7 @@ func main() {
 	// Create bridge with embedding API
 	bridge, err := embedding.New(opts...)
 	if err != nil {
-		log.WithError(err).Error("Failed to create bridge")
+		log.WithFields(logger.Fields{"pkg": "main", "func": "main"}).WithError(err).Error("Failed to create bridge")
 		os.Exit(1)
 	}
 
@@ -118,7 +115,7 @@ func main() {
 	defer cancel()
 
 	if err := bridge.Start(ctx); err != nil {
-		log.WithError(err).Error("Failed to start bridge")
+		log.WithFields(logger.Fields{"pkg": "main", "func": "main"}).WithError(err).Error("Failed to start bridge")
 		os.Exit(1)
 	}
 
@@ -127,7 +124,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Info("Received shutdown signal")
+	log.WithFields(logger.Fields{"pkg": "main", "func": "main"}).Info("Received shutdown signal")
 	bridge.Stop(context.Background())
 }
 
@@ -192,7 +189,7 @@ func parseFlags() *Config {
 	return cfg
 }
 
-func connectI2CP(cfg *Config, log *logrus.Logger) (*i2cp.Client, error) {
+func connectI2CP(cfg *Config, log *logger.Logger) (*i2cp.Client, error) {
 	i2cpConfig := &i2cp.ClientConfig{
 		RouterAddr: cfg.I2CPAddr,
 		Username:   cfg.Username,
@@ -202,7 +199,7 @@ func connectI2CP(cfg *Config, log *logrus.Logger) (*i2cp.Client, error) {
 	client := i2cp.NewClient(i2cpConfig)
 	ctx := context.Background()
 
-	log.WithField("addr", cfg.I2CPAddr).Info("Connecting to I2P router")
+	log.WithFields(logger.Fields{"pkg": "main", "func": "connectI2CP", "addr": cfg.I2CPAddr}).Info("Connecting to I2P router")
 	if err := client.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -230,6 +227,8 @@ func parseDatagramPort(addr string) int {
 func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarFunc {
 	return func(router *handler.Router, deps *embedding.Dependencies) {
 		log := deps.Logger
+		const pkg = "main"
+		const fn = "createHandlerRegistrar"
 
 		// Use default handler registrar for base handlers
 		embedding.DefaultHandlerRegistrar()(router, deps)
@@ -237,13 +236,10 @@ func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarF
 		// Without an I2CP client, default handlers are sufficient.
 		// The embedded router will wire transport once it is ready.
 		if i2cpClient == nil {
-			log.Info("No I2CP client: using default handlers (embedded router mode)")
+			log.WithFields(logger.Fields{"pkg": pkg, "func": fn}).Info("No I2CP client: using default handlers (embedded router mode)")
 			return
 		}
 
-		// Get the SESSION handler to add I2CP callback
-		// The default registrar already created it, we need to extend it
-		// For now, we re-register with the extended callback
 		streamConnector := handler.NewStreamingConnector()
 		streamAcceptor := handler.NewStreamingAcceptor()
 		streamForwarder := handler.NewStreamingForwarder()
@@ -259,26 +255,26 @@ func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarF
 
 			i2cpSess, ok := i2cpHandle.(*i2cp.I2CPSession)
 			if !ok {
-				log.WithField("sessionID", sess.ID()).Warn("Cannot create StreamManager: invalid I2CP session type")
+				log.WithFields(logger.Fields{"pkg": pkg, "func": fn, "sessionID": sess.ID()}).Warn("Cannot create StreamManager: invalid I2CP session type")
 				return
 			}
 
 			underlyingSession := i2cpSess.Session()
 			underlyingClient := i2cpClient.I2CPClient()
 			if underlyingSession == nil || underlyingClient == nil {
-				log.WithField("sessionID", sess.ID()).Warn("Cannot create StreamManager: no underlying I2CP session/client")
+				log.WithFields(logger.Fields{"pkg": pkg, "func": fn, "sessionID": sess.ID()}).Warn("Cannot create StreamManager: no underlying I2CP session/client")
 				return
 			}
 
 			streamManager, err := streaming.NewStreamManagerFromSession(underlyingClient, underlyingSession)
 			if err != nil {
-				log.WithField("sessionID", sess.ID()).WithError(err).Warn("Failed to create StreamManager from session")
+				log.WithFields(logger.Fields{"pkg": pkg, "func": fn, "sessionID": sess.ID()}).WithError(err).Warn("Failed to create StreamManager from session")
 				return
 			}
 
 			adapter, err := samstreaming.NewAdapter(streamManager)
 			if err != nil {
-				log.WithField("sessionID", sess.ID()).WithError(err).Warn("Failed to create StreamManager adapter")
+				log.WithFields(logger.Fields{"pkg": pkg, "func": fn, "sessionID": sess.ID()}).WithError(err).Warn("Failed to create StreamManager adapter")
 				return
 			}
 
@@ -286,7 +282,7 @@ func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarF
 			streamAcceptor.RegisterManager(sess.ID(), adapter)
 			streamForwarder.RegisterManager(sess.ID(), adapter)
 
-			log.WithField("sessionID", sess.ID()).Debug("Registered StreamManager for session")
+			log.WithFields(logger.Fields{"pkg": pkg, "func": fn, "sessionID": sess.ID()}).Debug("Registered StreamManager for STREAM session")
 		})
 
 		// Re-register SESSION handlers with extended callback
@@ -306,10 +302,10 @@ func createHandlerRegistrar(i2cpClient *i2cp.Client) embedding.HandlerRegistrarF
 			namingHandler := handler.NewNamingHandler(deps.DestManager)
 			namingHandler.SetDestinationResolver(destResolver)
 			router.Register("NAMING LOOKUP", namingHandler)
-			log.Debug("Wired destination resolver to NAMING handler")
+			log.WithFields(logger.Fields{"pkg": pkg, "func": fn}).Debug("Wired destination resolver to NAMING handler")
 		}
 
-		log.Debug("Extended handlers with I2CP integration")
+		log.WithFields(logger.Fields{"pkg": pkg, "func": fn}).Debug("Extended handlers with I2CP integration")
 	}
 }
 

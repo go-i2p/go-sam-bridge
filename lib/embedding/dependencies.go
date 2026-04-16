@@ -5,7 +5,7 @@ import (
 	"github.com/go-i2p/go-sam-bridge/lib/handler"
 	"github.com/go-i2p/go-sam-bridge/lib/i2cp"
 	"github.com/go-i2p/go-sam-bridge/lib/session"
-	"github.com/sirupsen/logrus"
+	"github.com/go-i2p/logger"
 )
 
 // Dependencies bundles shared resources used by handlers.
@@ -34,7 +34,7 @@ type Dependencies struct {
 	DatagramPort int
 
 	// Logger is the structured logger for all components.
-	Logger *logrus.Logger
+	Logger *logger.Logger
 }
 
 // newDependencies creates a Dependencies struct from the configuration.
@@ -57,11 +57,11 @@ func newDependencies(cfg *Config) *Dependencies {
 
 	// Create default logger if not provided
 	if deps.Logger == nil {
-		deps.Logger = logrus.New()
+		deps.Logger = logger.GetGoI2PLogger()
 		if cfg.Debug {
-			deps.Logger.SetLevel(logrus.DebugLevel)
+			deps.Logger.SetLevel(logger.DebugLevel)
 		} else {
-			deps.Logger.SetLevel(logrus.InfoLevel)
+			deps.Logger.SetLevel(logger.InfoLevel)
 		}
 	}
 

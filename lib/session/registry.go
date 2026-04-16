@@ -4,6 +4,8 @@ package session
 import (
 	"sync"
 
+	"github.com/go-i2p/logger"
+
 	"github.com/go-i2p/go-sam-bridge/lib/util"
 )
 
@@ -89,6 +91,7 @@ func (r *RegistryImpl) Register(s Session) error {
 
 	// Check ID uniqueness
 	if _, exists := r.sessions[id]; exists {
+		log.WithFields(logger.Fields{"pkg": "session", "func": "RegistryImpl.Register", "sessionID": id}).Warn("Duplicate session ID")
 		return util.ErrDuplicateID
 	}
 
@@ -98,6 +101,7 @@ func (r *RegistryImpl) Register(s Session) error {
 		destHash := dest.Hash()
 		if destHash != "" {
 			if _, exists := r.dests[destHash]; exists {
+				log.WithFields(logger.Fields{"pkg": "session", "func": "RegistryImpl.Register", "sessionID": id}).Warn("Duplicate destination")
 				return util.ErrDuplicateDest
 			}
 			r.dests[destHash] = id
@@ -118,6 +122,7 @@ func (r *RegistryImpl) Register(s Session) error {
 		r.mostRecentByStyle[style] = id
 	}
 
+	log.WithFields(logger.Fields{"pkg": "session", "func": "RegistryImpl.Register", "sessionID": id, "style": style}).Debug("Session registered")
 	return nil
 }
 
