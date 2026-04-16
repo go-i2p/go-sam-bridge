@@ -30,6 +30,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -64,6 +65,8 @@ func main() {
 	if cfg.Debug {
 		log.SetLevel(logrus.DebugLevel)
 		log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		// Enable slog debug output for handler-level diagnostics
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	} else {
 		log.SetLevel(logrus.InfoLevel)
 	}

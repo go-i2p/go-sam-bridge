@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/go-i2p/go-sam-bridge/lib/protocol"
@@ -97,6 +98,18 @@ func parseSendSAM33Options(cmd *protocol.Command, errFn invalidKeyFn) (*sendSAM3
 		}
 		opts.SendLeasesetSet = true
 	}
+
+	// Log when SAM 3.3 options are used — these are forwarded to go-datagrams
+	// but their behavioral effect is unverified (depends on upstream support).
+	if opts.SendTags != 0 || opts.TagThreshold != 0 || opts.Expires != 0 || opts.SendLeasesetSet {
+		slog.Debug("SAM 3.3 send options forwarded to upstream; behavioral effect unverified",
+			"SEND_TAGS", opts.SendTags,
+			"TAG_THRESHOLD", opts.TagThreshold,
+			"EXPIRES", opts.Expires,
+			"SEND_LEASESET", opts.SendLeaseset,
+		)
+	}
+
 	return opts, nil
 }
 
