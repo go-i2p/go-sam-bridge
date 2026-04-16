@@ -598,6 +598,7 @@ func (m *testPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	m.writAddr = addr
 	return len(p), nil
 }
+
 func (m *testPacketConn) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
