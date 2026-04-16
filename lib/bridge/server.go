@@ -179,6 +179,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.mu.Unlock()
 		if ctx != nil {
 			ctx.CloseForwardListeners()
+			// Per SAMv3.md: "The session is terminated when the socket is disconnected."
+			// Close the bound session and unregister it to prevent resource leaks.
+			if ctx.Session != nil {
+				_ = ctx.Session.Close()
+				_ = s.registry.Unregister(ctx.Session.ID())
+			}
 		}
 		c.Close()
 	}()
@@ -266,6 +272,12 @@ func (s *Server) processCommand(ctx *handler.Context, c *Connection, cmd *protoc
 		if err := s.sendResponse(c, response); err != nil {
 			return true
 		}
+	}
+	// If forwarding has started (after STREAM CONNECT/ACCEPT), the socket
+	// is now a raw data pipe. Exit the command loop so the bridge does not
+	// compete with ForwardData's io.Copy as a second reader on the same conn.
+	if ctx.HasStreamConn() {
+		return true
 	}
 	return false
 }

@@ -266,6 +266,9 @@ func (b *Bridge) cleanupStartupResources() {
 	if b.udpListener != nil {
 		_ = b.udpListener.Close()
 	}
+	if b.embeddedRouter != nil {
+		_ = b.embeddedRouter.Stop()
+	}
 }
 
 func (b *Bridge) watchContext(ctx context.Context) {

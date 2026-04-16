@@ -244,6 +244,9 @@ func (c *Connection) Age() time.Duration {
 func (c *Connection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.state == StateClosed {
+		return nil
+	}
 	c.state = StateClosed
 	return c.conn.Close()
 }

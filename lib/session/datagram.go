@@ -228,20 +228,21 @@ func (d *DatagramSessionImpl) IsForwarding() bool {
 func (d *DatagramSessionImpl) deliverDatagram(dg ReceivedDatagram) {
 	d.mu.RLock()
 	forwarding := d.forwardPort > 0
-	d.mu.RUnlock()
-
 	if forwarding {
+		d.mu.RUnlock()
 		d.forwardDatagram(dg)
 		return
 	}
 
-	// Deliver to receive channel (non-blocking, drop if full)
+	// Hold RLock across the channel send to prevent a data race with Close()
+	// which writes receiveChan = nil under mu.Lock().
 	select {
 	case d.receiveChan <- dg:
 	default:
 		// Channel full, drop datagram
 		// This is expected behavior per SAM spec - datagrams are unreliable
 	}
+	d.mu.RUnlock()
 }
 
 // forwardDatagram sends a received datagram to the configured forwarding address.

@@ -165,7 +165,18 @@ func createTestSession(t *testing.T, client *go_i2cp.Client) *go_i2cp.Session {
 
 	session := go_i2cp.NewSession(client, callbacks)
 
-	// Start ProcessIO loop in background
+	// Create the session with the I2P router first.
+	// CreateSessionSync drives the IO loop internally; starting ProcessIO concurrently
+	// before it returns would race on the shared bufio.Reader inside the client.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	err := client.CreateSessionSync(ctx, session)
+	if err != nil {
+		t.Fatalf("Failed to create I2CP session: %v", err)
+	}
+
+	// Start ProcessIO loop in background only after session establishment is complete.
 	go func() {
 		for {
 			if err := client.ProcessIO(context.Background()); err != nil {
@@ -176,15 +187,6 @@ func createTestSession(t *testing.T, client *go_i2cp.Client) *go_i2cp.Session {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}()
-
-	// Create the session with the I2P router
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	err := client.CreateSessionSync(ctx, session)
-	if err != nil {
-		t.Fatalf("Failed to create I2CP session: %v", err)
-	}
 
 	t.Cleanup(func() {
 		session.Close()

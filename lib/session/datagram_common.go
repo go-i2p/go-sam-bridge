@@ -35,6 +35,8 @@ func (h *datagramConnHolder) getDatagramConn() *datagrams.DatagramConn {
 
 // closeDatagramConn closes and nils the datagram connection if set.
 func (h *datagramConnHolder) closeDatagramConn() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.conn != nil {
 		h.conn.Close()
 		h.conn = nil

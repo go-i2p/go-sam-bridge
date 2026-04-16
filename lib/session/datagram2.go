@@ -248,6 +248,11 @@ func (d *Datagram2SessionImpl) DeliverDatagram(dg ReceivedDatagram, nonce uint64
 		return false
 	}
 
+	// Hold RLock across the channel send to prevent a data race with Close()
+	// which writes receiveChan = nil under mu.Lock().
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	// Non-blocking send to channel (drop if full)
 	select {
 	case d.receiveChan <- dg:
@@ -261,10 +266,9 @@ func (d *Datagram2SessionImpl) DeliverDatagram(dg ReceivedDatagram, nonce uint64
 
 // Close terminates the session and releases all resources.
 // Safe to call multiple times; concurrent calls are serialised by closeOnce.
-// The mutex is released before receiveWg.Wait() to prevent deadlock with
-// goroutines (e.g. DeliverDatagram) that also need the mutex.
-// cleanupTimer is stopped under cleanupMu (not mu) to avoid the data race
-// with cleanupExpiredNonces which also writes cleanupTimer under cleanupMu.
+// receiveWg.Wait() runs before close(receiveChan) to drain any delivery
+// goroutines and prevent "send on closed channel" panics, mirroring the
+// closeDGResources canonical pattern.
 func (d *Datagram2SessionImpl) Close() error {
 	var closeErr error
 	d.closeOnce.Do(func() {
@@ -280,6 +284,10 @@ func (d *Datagram2SessionImpl) Close() error {
 		}
 		d.cleanupMu.Unlock()
 
+		// Drain delivery goroutines before closing receiveChan to prevent
+		// "send on closed channel" panics. Must precede mu.Lock()+close().
+		d.receiveWg.Wait()
+
 		// Release session-specific resources under mu.
 		d.mu.Lock()
 		if d.udpConn != nil {
@@ -292,9 +300,6 @@ func (d *Datagram2SessionImpl) Close() error {
 		}
 		close(d.receiveChan)
 		d.mu.Unlock()
-
-		// Wait for goroutines after releasing the lock to prevent deadlock
-		d.receiveWg.Wait()
 
 		// Close base session
 		closeErr = d.BaseSession.Close()
@@ -340,12 +345,15 @@ func (d *Datagram2SessionImpl) cleanupExpiredNonces() {
 		}
 	}
 
-	// Reschedule if session is still active
+	// Reschedule if session is still active.
+	// Guard on cleanupTimer != nil: Close() sets cleanupTimer = nil under
+	// cleanupMu before stopping the timer, so if it is nil here we are racing
+	// a concurrent Close() and must not create a new stale timer.
 	d.mu.RLock()
 	status := d.Status()
 	d.mu.RUnlock()
 
-	if status != StatusClosed {
+	if status != StatusClosed && d.cleanupTimer != nil && d.ctx.Err() == nil {
 		d.cleanupTimer = time.AfterFunc(d.nonceExpiry/2, func() {
 			d.cleanupExpiredNonces()
 		})

@@ -550,11 +550,19 @@ func (s *StreamSessionImpl) forwardConnection(i2pConn, tcpConn net.Conn) {
 		done <- struct{}{}
 	}()
 
-	// Wait for either direction to complete or context cancellation
+	// Wait for either direction to complete or context cancellation.
 	select {
 	case <-done:
 	case <-s.ctx.Done():
 	}
+
+	// Close both connections to unblock the still-running io.Copy goroutine,
+	// then wait for it. Without this, forwardWg.Done() would be called while
+	// one goroutine is still executing, violating the WaitGroup contract and
+	// causing the goroutine to outlive Close().
+	i2pConn.Close()
+	tcpConn.Close()
+	<-done
 }
 
 // IsForwarding returns true if FORWARD is active on this session.

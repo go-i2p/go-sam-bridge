@@ -237,6 +237,11 @@ func (d *Datagram3SessionImpl) IsForwarding() bool {
 //
 // Returns true if the datagram was delivered, false if channel was full.
 func (d *Datagram3SessionImpl) DeliverDatagram(dg ReceivedDatagram) bool {
+	// Hold RLock across the channel send to prevent a data race with Close()
+	// which writes receiveChan = nil under mu.Lock().
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	// Non-blocking send to channel (drop if full)
 	select {
 	case d.receiveChan <- dg:
@@ -250,15 +255,20 @@ func (d *Datagram3SessionImpl) DeliverDatagram(dg ReceivedDatagram) bool {
 
 // Close terminates the session and releases all resources.
 // Safe to call multiple times; concurrent calls are serialised by closeOnce.
-// The mutex is released before receiveWg.Wait() to prevent deadlock with
-// goroutines (e.g. DeliverDatagram) that also need the mutex.
+// receiveWg.Wait() runs before close(receiveChan) to drain any delivery
+// goroutines and prevent "send on closed channel" panics, mirroring the
+// closeDGResources canonical pattern.
 func (d *Datagram3SessionImpl) Close() error {
 	var closeErr error
 	d.closeOnce.Do(func() {
 		// Cancel context to stop background goroutines
 		d.cancel()
 
-		// Perform cleanup under the lock before waiting for goroutines
+		// Drain delivery goroutines before closing receiveChan to prevent
+		// "send on closed channel" panics. Must precede mu.Lock()+close().
+		d.receiveWg.Wait()
+
+		// Perform cleanup under the lock after all senders have exited.
 		d.mu.Lock()
 		if d.udpConn != nil {
 			d.udpConn.Close()
@@ -270,9 +280,6 @@ func (d *Datagram3SessionImpl) Close() error {
 		}
 		close(d.receiveChan)
 		d.mu.Unlock()
-
-		// Wait for goroutines after releasing the lock to prevent deadlock
-		d.receiveWg.Wait()
 
 		// Close base session
 		closeErr = d.BaseSession.Close()

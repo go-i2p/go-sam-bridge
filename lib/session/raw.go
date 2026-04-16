@@ -264,20 +264,21 @@ func (r *RawSessionImpl) deliverDatagram(dg ReceivedRawDatagram) {
 	r.mu.RLock()
 	forwarding := r.forwardPort > 0
 	headerEnabled := r.headerEnabled
-	r.mu.RUnlock()
-
 	if forwarding {
+		r.mu.RUnlock()
 		r.forwardDatagram(dg, headerEnabled)
 		return
 	}
 
-	// Deliver to receive channel (non-blocking, drop if full)
+	// Hold RLock across the channel send to prevent a data race with Close()
+	// which writes receiveChan = nil under mu.Lock().
 	select {
 	case r.receiveChan <- dg:
 	default:
 		// Channel full, drop datagram
 		// This is expected behavior per SAM spec - datagrams are unreliable
 	}
+	r.mu.RUnlock()
 }
 
 // forwardDatagram sends a received datagram to the configured forwarding address.
