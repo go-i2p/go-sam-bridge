@@ -32,7 +32,7 @@ Unlike other SAM implementations that require a separate I2P router, `go-sam-bri
 
 > **Note for binary users:** The `sam-bridge` binary currently requires a running I2P/I2CP daemon (`routers` port 7654). Automatic embedded-router fallback is available only via the library API (`lib/embedding`). Start `i2pd` or Java I2P first, then run `sam-bridge`.
 
-Also, `go-sam-bridge` is capable of detecting an I2P router on the host and determining if it has a SAM API enabled. If an I2CP port is available on port 7654 but a SAM API is not available on the configured port(`7656` by default), then `go-sam-bridge` launches attached to the I2CP port provided by the host.
+When using the library API, `go-sam-bridge` checks whether the I2CP port (7654) is available (no process listening). If the port is occupied, it assumes an I2P router is present and connects to it. If the port is free, an embedded router is started automatically.
 
 ## Status
 
@@ -59,11 +59,32 @@ Also, `go-sam-bridge` is capable of detecting an I2P router on the host and dete
 
 ```bash
 # Install
-go get github.com/go-i2p/go-sam-bridge
+go install github.com/go-i2p/go-sam-bridge/cmd/sam-bridge@latest
 
-# Run the bridge (when implemented)
-go run cmd/sam-bridge/main.go
+# Run (requires I2P router on port 7654, or use library API for embedded router)
+sam-bridge -listen :7656 -i2cp 127.0.0.1:7654 -debug
 ```
+
+## CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-listen` | `:7656` | SAM listen address |
+| `-i2cp` | `127.0.0.1:7654` | I2CP router address |
+| `-udp` | `:7655` | UDP datagram port |
+| `-debug` | `false` | Enable debug logging |
+| `-user` | | I2CP username (optional) |
+| `-pass` | | I2CP password (optional) |
+| `-version` | | Show version information |
+| `-help` | | Show help message |
+
+## Environment Variables
+
+| Variable | Overrides | Description |
+|----------|-----------|-------------|
+| `SAM_LISTEN` | `-listen` | SAM listen address |
+| `I2CP_ADDR` | `-i2cp` | I2CP router address |
+| `SAM_DEBUG` | `-debug` | Enable debug logging (any non-empty value) |
 
 ## SAM Protocol
 
@@ -100,8 +121,8 @@ outbound.quantity=3
 ## Limitations
 
 - **DATAGRAM/RAW/DATAGRAM2/DATAGRAM3 send requires I2CP** — Datagram and raw session send operations require a running I2P/I2CP daemon. Sessions can be created without I2CP, but send operations will fail until the DatagramConn is wired via an active I2CP session. In embedded router mode (library API), wiring happens automatically when the router becomes ready.
-- **DEST GENERATE only supports Ed25519 (signature type 7).** Clients requesting other SAM signature types (0–6, 8) will receive an error. This is the recommended signature type for modern I2P usage.
-- **B33 blinded address resolution** is delegated to go-i2cp and has not been verified against a router that supports encrypted LeaseSets.
+- **DEST GENERATE defaults to Ed25519 (signature type 7) instead of the SAM spec default DSA_SHA1 (type 0) for security reasons.** Only Ed25519 is supported; clients requesting other SAM signature types (0–6, 8) will receive an error.
+- **B33 blinded address resolution** is delegated to go-i2cp and has not been verified against a router that supports encrypted LeaseSets. B33 requires a router with encrypted LeaseSet support.
 - **SAM 3.3 send options** (SEND_TAGS, TAG_THRESHOLD, EXPIRES, SEND_LEASESET) are parsed and forwarded to go-datagrams; actual behavioral effect depends on upstream library support.
 
 ## Contributing

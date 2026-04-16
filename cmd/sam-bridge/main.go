@@ -12,7 +12,16 @@
 //	-i2cp string       I2CP router address (default "127.0.0.1:7654")
 //	-udp string        UDP datagram port (default ":7655")
 //	-debug             Enable debug logging
+//	-user string       I2CP username (optional)
+//	-pass string       I2CP password (optional)
+//	-version           Show version information
 //	-help              Show help message
+//
+// Environment variables:
+//
+//	SAM_LISTEN    SAM listen address (overrides -listen)
+//	I2CP_ADDR     I2CP router address (overrides -i2cp)
+//	SAM_DEBUG     Enable debug logging (overrides -debug)
 //
 // See SAMv3.md for the complete SAM protocol specification.
 package main
