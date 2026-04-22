@@ -3,12 +3,12 @@ module github.com/go-i2p/go-sam-bridge
 go 1.26.1
 
 require (
-	github.com/go-i2p/common v0.1.51
-	github.com/go-i2p/go-datagrams v0.1.3
-	github.com/go-i2p/go-i2cp v0.1.4-0.20260416155517-f8c330e19c2b
+	github.com/go-i2p/common v0.1.52
+	github.com/go-i2p/go-datagrams v0.1.52
+	github.com/go-i2p/go-i2cp v0.1.52
 	github.com/go-i2p/go-i2p v0.1.52
-	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
-	github.com/go-i2p/logger v0.1.51
+	github.com/go-i2p/go-streaming v0.1.52
+	github.com/go-i2p/logger v0.1.52
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.50.0
 )
@@ -20,14 +20,14 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-i2p/crypto v0.1.51 // indirect
+	github.com/go-i2p/crypto v0.1.52 // indirect
 	github.com/go-i2p/elgamal v0.0.2 // indirect
 	github.com/go-i2p/go-nat-listener v0.0.0-20260402222111-bfda0025cb1b // indirect
-	github.com/go-i2p/go-noise v0.1.4-0.20260406215923-93b02ff49d4f // indirect
+	github.com/go-i2p/go-noise v0.1.52 // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260417162122-21146ed7aca8 // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
-	github.com/go-i2p/su3 v0.1.51 // indirect
+	github.com/go-i2p/su3 v0.1.52 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
