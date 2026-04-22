@@ -1,9 +1,9 @@
 module github.com/go-i2p/go-sam-bridge
 
-go 1.25.0
+go 1.26.1
 
 require (
-	github.com/go-i2p/common v0.1.4-0.20260406221321-5d52c2809acd
+	github.com/go-i2p/common v0.1.51
 	github.com/go-i2p/go-datagrams v0.1.3
 	github.com/go-i2p/go-i2cp v0.1.4-0.20260416155517-f8c330e19c2b
 	github.com/go-i2p/go-i2p v0.1.4-0.20260410153854-7378e61b4d26
@@ -21,13 +21,13 @@ require (
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/eyedeekay/go-unzip v0.0.0-20240201194209-560d8225b50e // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-i2p/crypto v0.1.4-0.20260327201310-96101c044a62 // indirect
+	github.com/go-i2p/crypto v0.1.51 // indirect
 	github.com/go-i2p/elgamal v0.0.2 // indirect
 	github.com/go-i2p/go-nat-listener v0.0.0-20260402222111-bfda0025cb1b // indirect
 	github.com/go-i2p/go-noise v0.1.4-0.20260406215923-93b02ff49d4f // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
-	github.com/go-i2p/su3 v0.0.2-0.20260406203134-0ec837609b00 // indirect
+	github.com/go-i2p/su3 v0.1.51 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
