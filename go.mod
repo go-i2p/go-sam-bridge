@@ -6,9 +6,9 @@ require (
 	github.com/go-i2p/common v0.1.51
 	github.com/go-i2p/go-datagrams v0.1.3
 	github.com/go-i2p/go-i2cp v0.1.4-0.20260416155517-f8c330e19c2b
-	github.com/go-i2p/go-i2p v0.1.4-0.20260410153854-7378e61b4d26
+	github.com/go-i2p/go-i2p v0.1.52
 	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
-	github.com/go-i2p/logger v0.1.5
+	github.com/go-i2p/logger v0.1.51
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.50.0
 )
@@ -19,12 +19,12 @@ require (
 	github.com/beevik/ntp v1.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
-	github.com/eyedeekay/go-unzip v0.0.0-20240201194209-560d8225b50e // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-i2p/crypto v0.1.51 // indirect
 	github.com/go-i2p/elgamal v0.0.2 // indirect
 	github.com/go-i2p/go-nat-listener v0.0.0-20260402222111-bfda0025cb1b // indirect
 	github.com/go-i2p/go-noise v0.1.4-0.20260406215923-93b02ff49d4f // indirect
+	github.com/go-i2p/go-unzip v0.0.0-20260417162122-21146ed7aca8 // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260327201800-8e41bb3d9f1e // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
 	github.com/go-i2p/su3 v0.1.51 // indirect
@@ -50,6 +50,7 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 )
 
 //replace github.com/go-i2p/go-i2cp => ../../../github.com/go-i2p/go-i2cp
