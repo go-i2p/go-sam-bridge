@@ -29,6 +29,7 @@ import (
 	"github.com/go-i2p/go-sam-bridge/lib/session"
 	samstreaming "github.com/go-i2p/go-sam-bridge/lib/streaming"
 	"github.com/go-i2p/go-streaming"
+	"github.com/go-i2p/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -46,7 +47,7 @@ type testBridge struct {
 	bridge     *embedding.Bridge
 	i2cpClient *i2cp.Client
 	cancel     context.CancelFunc
-	log        *logrus.Logger
+	log        *logger.Logger
 }
 
 // startBridge boots the embedded router + SAM bridge and waits until the
@@ -55,10 +56,10 @@ type testBridge struct {
 func startBridge(t *testing.T) *testBridge {
 	t.Helper()
 
-	log := logrus.New()
+	log := logger.New()
 	log.SetOutput(os.Stdout)
-	log.SetLevel(logrus.DebugLevel)
-	log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	log.SetLevel(logger.DebugLevel)
+	log.SetFormatter(&logger.TextFormatter{FullTimestamp: true})
 
 	log.Info("Creating embedded SAM bridge with go-i2p router...")
 
