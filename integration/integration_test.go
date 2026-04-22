@@ -30,7 +30,6 @@ import (
 	samstreaming "github.com/go-i2p/go-sam-bridge/lib/streaming"
 	"github.com/go-i2p/go-streaming"
 	"github.com/go-i2p/logger"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -399,7 +398,7 @@ func testStreamSession(t *testing.T, tb *testBridge) {
 // createI2CPWiredBridge creates a bridge with full I2CP integration,
 // including StreamManager wiring for STREAM sessions.
 // This is analogous to what cmd/sam-bridge/main.go does.
-func createI2CPWiredBridge(t *testing.T, i2cpClient *i2cp.Client, log *logrus.Logger) *embedding.Bridge {
+func createI2CPWiredBridge(t *testing.T, i2cpClient *i2cp.Client, log *logger.Logger) *embedding.Bridge {
 	t.Helper()
 
 	i2cpProvider := newI2CPProviderAdapter(i2cpClient)
@@ -421,7 +420,7 @@ func createI2CPWiredBridge(t *testing.T, i2cpClient *i2cp.Client, log *logrus.Lo
 }
 
 // createTestHandlerRegistrar mirrors cmd/sam-bridge/main.go's handler setup.
-func createTestHandlerRegistrar(i2cpClient *i2cp.Client, log *logrus.Logger) embedding.HandlerRegistrarFunc {
+func createTestHandlerRegistrar(i2cpClient *i2cp.Client, log *logger.Logger) embedding.HandlerRegistrarFunc {
 	return func(router *handler.Router, deps *embedding.Dependencies) {
 		embedding.DefaultHandlerRegistrar()(router, deps)
 
