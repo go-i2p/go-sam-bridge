@@ -10,7 +10,6 @@ require (
 	github.com/go-i2p/go-streaming v0.1.4-0.20260413210745-0bd8c995039c
 	github.com/go-i2p/logger v0.1.5
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/crypto v0.50.0
 )
 
@@ -37,6 +36,7 @@ require (
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/samber/lo v1.53.0 // indirect
 	github.com/samber/oops v1.21.0 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
