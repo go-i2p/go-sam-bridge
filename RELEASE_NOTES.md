@@ -1,4 +1,4 @@
-Release notes for: `go-sam-bridge` Version `0.1.54`
+Release notes for: `go-sam-bridge` Version `0.1.55`
 ==============================================
 
 This file is generated automatically in order to keep git tags in sync.
