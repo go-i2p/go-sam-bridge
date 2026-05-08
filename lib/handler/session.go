@@ -841,4 +841,4 @@ func (e *sessionErr) Error() string {
 var _ Handler = (*SessionHandler)(nil)
 
 // Verify interface compliance for net.Conn usage
-var _ net.Conn = (net.Conn)(nil)
+var _ net.Conn = net.Conn(nil)

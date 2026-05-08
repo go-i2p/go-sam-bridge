@@ -129,7 +129,8 @@ func (o *OfflineSignature) Bytes() []byte {
 	result := make([]byte, 0, 6+len(o.TransientPublicKey)+len(o.Signature))
 
 	// Expires as 4-byte big-endian Unix timestamp
-	result = append(result,
+	result = append(
+		result,
 		byte(o.Expires>>24),
 		byte(o.Expires>>16),
 		byte(o.Expires>>8),
@@ -137,7 +138,8 @@ func (o *OfflineSignature) Bytes() []byte {
 	)
 
 	// Signature type as 2-byte big-endian
-	result = append(result,
+	result = append(
+		result,
 		byte(o.TransientType>>8),
 		byte(o.TransientType),
 	)
