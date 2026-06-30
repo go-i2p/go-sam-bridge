@@ -3,11 +3,11 @@ module github.com/go-i2p/go-sam-bridge
 go 1.26.3
 
 require (
-	github.com/go-i2p/common v0.1.60000-0.20260612012818-ffa84716e922
-	github.com/go-i2p/go-datagrams v0.1.62
-	github.com/go-i2p/go-i2cp v0.1.60000-0.20260612013604-6be0e753d2c7
-	github.com/go-i2p/go-i2p v0.1.62
-	github.com/go-i2p/go-streaming v0.1.62
+	github.com/go-i2p/common v0.1.60000-0.20260630222658-15751a11a45e
+	github.com/go-i2p/go-datagrams v0.1.60000-0.20260630224546-15bdfdac5a52
+	github.com/go-i2p/go-i2cp v0.1.60000-0.20260630224428-d27f0dc69875
+	github.com/go-i2p/go-i2p v0.1.60000-0.20260630224048-5b3cc7ae7a93
+	github.com/go-i2p/go-streaming v0.1.60000-0.20260630224821-837043bc2134
 	github.com/go-i2p/logger v0.1.60000-0.20260612012503-bec4044a2b0d
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.53.0
@@ -20,16 +20,16 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/go-i2p/crypto v0.1.60000-0.20260612012729-bcf561943886 // indirect
+	github.com/go-i2p/crypto v0.1.60000-0.20260630222545-de94e58f0e78 // indirect
 	github.com/go-i2p/elgamal v0.1.59999 // indirect
 	github.com/go-i2p/go-nat-listener v0.1.62 // indirect
-	github.com/go-i2p/go-noise v0.1.60000-0.20260624210455-c5cd198c4109 // indirect
+	github.com/go-i2p/go-noise v0.1.60000-0.20260630223254-36f03f650eaa // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260417162122-21146ed7aca8 // indirect
 	github.com/go-i2p/noise v1.1.1-0.20260612013029-6d1ef3427561 // indirect
-	github.com/go-i2p/path v0.1.60000-0.20260612012938-437d7ee74b3a // indirect
+	github.com/go-i2p/path v0.1.60000-0.20260630222843-bc6e8e3a8561 // indirect
 	github.com/go-i2p/pool v0.1.59999 // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260302212615-1093a31f680d // indirect
-	github.com/go-i2p/su3 v0.1.60000-0.20260612012616-389e1d2c2310 // indirect
+	github.com/go-i2p/su3 v0.1.60000-0.20260630222457-3bc16e3643fc // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
