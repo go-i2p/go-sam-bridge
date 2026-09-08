@@ -24,7 +24,7 @@ require (
 	github.com/go-i2p/go-nat-listener v0.1.70000 // indirect
 	github.com/go-i2p/go-noise v0.1.70000 // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260908193701-6ecb33740b07 // indirect
-	github.com/go-i2p/noise v1.1.70000 // indirect
+	github.com/go-i2p/noise v1.1.1-0.20260612013029-6d1ef3427561 // indirect
 	github.com/go-i2p/path v0.1.70000 // indirect
 	github.com/go-i2p/pool v0.1.70000 // indirect
 	github.com/go-i2p/red25519 v0.0.0-20260908204607-9444de34c638 // indirect
