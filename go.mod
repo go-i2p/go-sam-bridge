@@ -3,11 +3,11 @@ module github.com/go-i2p/go-sam-bridge
 go 1.26.8
 
 require (
-	github.com/go-i2p/common v0.1.70001
-	github.com/go-i2p/go-datagrams v0.1.70001
-	github.com/go-i2p/go-i2cp v0.1.70001
-	github.com/go-i2p/go-i2p v0.1.70001
-	github.com/go-i2p/go-streaming v0.1.70001
+	github.com/go-i2p/common v0.1.70002-0.20261108230912-8737a0084f07
+	github.com/go-i2p/go-datagrams v0.1.70002-0.20260908225214-292e1fc0b5f0
+	github.com/go-i2p/go-i2cp v0.1.70002-0.20261109163320-df0e73df5b59
+	github.com/go-i2p/go-i2p v0.1.70002-0.20261108172115-039956eea159
+	github.com/go-i2p/go-streaming v0.1.70002-0.20260908225313-ab2d7466cd17
 	github.com/go-i2p/logger v0.1.70001
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.57.0
@@ -19,16 +19,15 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/go-i2p/crypto v0.1.70001 // indirect
+	github.com/go-i2p/crypto v0.1.70002-0.20261027053312-d22b54cc63a6 // indirect
 	github.com/go-i2p/elgamal v0.1.70001 // indirect
-	github.com/go-i2p/go-nat-listener v0.1.70001 // indirect
-	github.com/go-i2p/go-noise v0.1.70001 // indirect
+	github.com/go-i2p/go-nat-listener v0.1.70002-0.20261015233531-1e3cbd432928 // indirect
+	github.com/go-i2p/go-noise v0.1.70002-0.20261108044300-ab5cf94e39f3 // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260908193701-6ecb33740b07 // indirect
-	github.com/go-i2p/noise v1.1.1-0.20260612013029-6d1ef3427561 // indirect
-	github.com/go-i2p/path v0.1.70001 // indirect
-	github.com/go-i2p/pool v0.1.70001 // indirect
-	github.com/go-i2p/red25519 v0.0.0-20260908204607-9444de34c638 // indirect
-	github.com/go-i2p/su3 v0.1.70001 // indirect
+	github.com/go-i2p/noise v1.1.70001-0.20261108230905-d8e68b967e5c // indirect
+	github.com/go-i2p/path v0.1.70002-0.20261027130611-64613bf4aa55 // indirect
+	github.com/go-i2p/pool v0.1.70002-0.20260908223948-09bd42c580c8 // indirect
+	github.com/go-i2p/su3 v0.1.70002-0.20260908223405-1fed3cabe015 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.1.0 // indirect
