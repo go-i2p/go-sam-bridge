@@ -6,7 +6,7 @@ require (
 	github.com/go-i2p/common v0.1.70002-0.20261108230912-8737a0084f07
 	github.com/go-i2p/go-datagrams v0.1.70002-0.20261110004903-17438d13598e
 	github.com/go-i2p/go-i2cp v0.1.70002-0.20261109211031-bfcd48db3a61
-	github.com/go-i2p/go-i2p v0.1.70002-0.20261110163207-910cf4c477cd
+	github.com/go-i2p/go-i2p v0.1.70002-0.20261112061408-da1a65794279
 	github.com/go-i2p/go-streaming v0.1.70002-0.20261110004904-9ec2d4e48487
 	github.com/go-i2p/logger v0.1.70001
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -22,10 +22,10 @@ require (
 	github.com/go-i2p/crypto v0.1.70002-0.20261027053312-d22b54cc63a6 // indirect
 	github.com/go-i2p/elgamal v0.1.70001 // indirect
 	github.com/go-i2p/go-nat-listener v0.1.70002-0.20261015233531-1e3cbd432928 // indirect
-	github.com/go-i2p/go-noise v0.1.70002-0.20261110004904-f81ac08b9ac3 // indirect
+	github.com/go-i2p/go-noise v0.1.70002-0.20261112061852-b0525cdffc6f // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260908193701-6ecb33740b07 // indirect
 	github.com/go-i2p/noise v1.1.70001-0.20261108230905-d8e68b967e5c // indirect
-	github.com/go-i2p/path v0.1.70002-0.20261110004904-06e7299caad9 // indirect
+	github.com/go-i2p/path v0.1.70002-0.20261112060139-9bd8754a14b6 // indirect
 	github.com/go-i2p/pool v0.1.70002-0.20260908223948-09bd42c580c8 // indirect
 	github.com/go-i2p/su3 v0.1.70002-0.20261109165808-25a262194066 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
