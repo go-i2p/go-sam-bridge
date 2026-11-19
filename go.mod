@@ -3,11 +3,11 @@ module github.com/go-i2p/go-sam-bridge
 go 1.26.8
 
 require (
-	github.com/go-i2p/common v0.1.70002-0.20261118194241-62f47be3c537
-	github.com/go-i2p/go-datagrams v0.1.70002-0.20261118061512-988757c85d41
-	github.com/go-i2p/go-i2cp v0.1.70002-0.20261118061512-7aeae1016db7
-	github.com/go-i2p/go-i2p v0.1.70002-0.20261118211602-4214c947d54a
-	github.com/go-i2p/go-streaming v0.1.70002-0.20261118061512-07a0dafbcaa5
+	github.com/go-i2p/common v0.1.70002-0.20261119030747-fdf972457881
+	github.com/go-i2p/go-datagrams v0.1.70002-0.20261118212450-4f1ab78df74b
+	github.com/go-i2p/go-i2cp v0.1.70002-0.20261118212450-92f035b03b2c
+	github.com/go-i2p/go-i2p v0.1.70002-0.20261119061601-244320af4a49
+	github.com/go-i2p/go-streaming v0.1.70002-0.20261118212450-2de2803a6cec
 	github.com/go-i2p/logger v0.1.70001
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/crypto v0.57.0
@@ -22,12 +22,12 @@ require (
 	github.com/go-i2p/crypto v0.1.70002-0.20261118201949-96ca77ddd35f // indirect
 	github.com/go-i2p/elgamal v0.1.70001 // indirect
 	github.com/go-i2p/go-nat-listener v0.1.70002-0.20261015233531-1e3cbd432928 // indirect
-	github.com/go-i2p/go-noise v0.1.70002-0.20261118202006-d63f4ed8a04e // indirect
+	github.com/go-i2p/go-noise v0.1.70002-0.20261119044528-55ccac77d699 // indirect
 	github.com/go-i2p/go-unzip v0.0.0-20260908193701-6ecb33740b07 // indirect
 	github.com/go-i2p/noise v1.1.70001-0.20261118202026-19560feb154e // indirect
-	github.com/go-i2p/path v0.1.70002-0.20261118201936-9e26f1e3f6ec // indirect
+	github.com/go-i2p/path v0.1.70002-0.20261118212450-fe09be02080a // indirect
 	github.com/go-i2p/pool v0.1.70002-0.20261118051347-c9735934f8df // indirect
-	github.com/go-i2p/su3 v0.1.70002-0.20261118061511-450296218231 // indirect
+	github.com/go-i2p/su3 v0.1.70002-0.20261118212449-87c810d364df // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.1.0 // indirect
